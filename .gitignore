@@ -1,0 +1,62 @@
+# ───────── 환경 / 캐시 ─────────
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# ───────── 시크릿 (일반 보호) ─────────
+# 카카오 인증 정보는 로컬에서만 보관
+/kakao_tokens.json
+/kakao_local_config.json
+*.token
+.env
+
+# ───────── 모델 가중치 (대용량·재생성 가능) ─────────
+# 기본은 무시. 단, 앱 실행에 쓰는 모델은 맨 아래에서 추적 예외 처리.
+*.pt
+*.pth
+
+# ───────── 학습 산출물 ─────────
+# runs: ultralytics 실행 결과 / output: 행동 체크포인트·로그 / dataset: 가판대 자동라벨
+runs/
+train/*/output/*
+train/*/dataset/
+*.npz
+*.log
+
+# ───────── 학습 데이터 (영상/이미지) ─────────
+train/*/split/data
+*.mp4
+*.avi
+*.mkv
+*.mov
+*.wmv
+*.flv
+
+# ───────── 런타임 출력 ─────────
+# event_captures: 이벤트 캡처 이미지 / recordings: 녹화 + recordings.json
+event_captures/
+recordings/
+
+# ───────── 문서 / 실행 보조 (개인용) ─────────
+process.md
+make_report.py
+*.docx
+*.hwp
+*.bat
+
+# ───────── IDE / OS ─────────
+.vscode/
+.idea/
+.claudeignore
+.claude/
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ───────── 추적 예외: 앱 실행에 필요한 모델 (GitHub 배포용) ─────────
+# 위 *.pt / *.pth / train/*/output/* 무시를 덮어써 이 3개만 커밋
+!/yolo11n-pose.pt
+!model/objects.pt
+!train/1_behavior/output/kpt_behavior.pth
