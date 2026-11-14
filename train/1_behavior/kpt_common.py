@@ -33,6 +33,8 @@ def encode_kpts(kpts_xy, bbox) -> np.ndarray:
     bh = max(float(y2 - y1), 1.0)
     vec = np.zeros(34, dtype=np.float32)
     for i, (kx, ky) in enumerate(kpts_xy):
+        if kx == 0 and ky == 0:
+            continue  # 미검출 관절은 실행 모델과 동일하게 (0, 0)을 유지한다.
         vec[i * 2] = (kx - x1) / bw
         vec[i * 2 + 1] = (ky - y1) / bh
     return vec
@@ -49,7 +51,7 @@ def run_yolo_on_frame(model, img_bgr):
             x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
             area = (x2 - x1) * (y2 - y1)
             if area > best_area:
-                kpts = r.keypoints[i].data[0].cpu().numpy()  # (17, 3)
+                kpts = r.keypoints[i].data[0].cpu().numpy()  # 관절 17개의 좌표와 신뢰도
                 kpts_xy = np.array(
                     [[k[0], k[1]] if k[2] >= KPT_CONF_THR else [0.0, 0.0]
                      for k in kpts],

@@ -34,7 +34,7 @@ class TheftMonitor:
         self.pay_timeout = pay_timeout
         self._stand_boxes = []      # 캐시된 가판대 영역
         self._pos_boxes = []        # 캐시된 결제기 영역
-        self._state = {}            # tid -> dict(took, took_time, paid, take_cnt, theft, last_seen_frame)
+        self._state = {}            # 트랙별 가판대 접촉, 결제기 경유, 마지막 관측 상태
         self._frame = 0
 
     def _wrists(self, kpts):
@@ -47,10 +47,11 @@ class TheftMonitor:
                 pts.append((float(kpts[i][0]), float(kpts[i][1])))
         return pts
 
-    def update(self, tracks: list, kpt_map: dict, objects: list) -> dict:
+    def update(self, tracks: list, kpt_map: dict, objects: list, *,
+               source_seconds: float | None = None, include_lost: bool = False) -> dict:
         """매 프레임 호출. 반환: { track_id: True } (도난으로 판정된 트랙)."""
         self._frame += 1
-        now = time.time()
+        now = time.monotonic() if source_seconds is None else source_seconds
 
         # stand/pos 영역 갱신 (정적이므로 검출되면 캐시)
         stands = [o["bbox"] for o in objects if o.get("cls") == 0]
@@ -98,17 +99,20 @@ class TheftMonitor:
                 st["theft"] = True
 
         # 사라진 트랙: 집고 미결제면 도난 확정 후 잠시 유지
+        lost_events = {}
         for tid, st in list(self._state.items()):
             if tid not in present:
                 if self._frame - st["last_seen"] > LOST_FRAMES:
                     if st["took"] and st["released"] and not st["paid"]:
+                        if include_lost and not st["theft"]:
+                            lost_events[tid] = True
                         st["theft"] = True
                     # 오래된 트랙 정리
                     if self._frame - st["last_seen"] > LOST_FRAMES * 20:
                         self._state.pop(tid, None)
 
-        return {tid: True for tid, st in self._state.items()
-                if st["theft"] and tid in present}
+        return {**lost_events, **{tid: True for tid, st in self._state.items()
+                                 if st["theft"] and tid in present}}
 
     @property
     def has_regions(self) -> bool:

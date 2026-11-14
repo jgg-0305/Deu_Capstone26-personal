@@ -14,7 +14,7 @@ from PyQt5.QtGui import QPixmap, QFont, QBrush, QColor
 class _SourceSubWindow(QMdiSubWindow):
     """닫기(X) 시 소스 정리를 트리거하는 MDI 서브창."""
 
-    closed = pyqtSignal(int)   # source_id
+    closed = pyqtSignal(int)   # 소스 식별자
 
     def __init__(self, sid: int):
         super().__init__()
@@ -93,9 +93,9 @@ class VideoDisplay(QLabel):
 class VideoTile(QFrame):
     """다중 소스 그리드의 단일 타일 — 제목줄 + 영상 + 상태줄."""
 
-    close_requested = pyqtSignal(int)   # source_id
-    seek_requested = pyqtSignal(int, float)   # (source_id, 0.0~1.0)
-    pause_toggled = pyqtSignal(int, bool)     # (source_id, paused)
+    close_requested = pyqtSignal(int)   # 소스 식별자
+    seek_requested = pyqtSignal(int, float)   # 소스 식별자와 재생 위치 비율
+    pause_toggled = pyqtSignal(int, bool)     # 소스 식별자와 일시 정지 상태
 
     def __init__(self, source_id: int, title: str):
         super().__init__()
@@ -206,7 +206,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("CCTV 이상 현상 감지 시스템")
         self.resize(1280, 780)
-        # source_id → {"thread", "tile", "title", "count", "fps", "behavior"}
+        # 소스별 스레드, 타일, 제목, 감지 인원, 프레임 속도와 행동
         self._sources: dict[int, dict] = {}
         self._next_id = 0
         self._build_ui()
@@ -509,7 +509,8 @@ class MainWindow(QMainWindow):
             if src["thread"].source == url:
                 QMessageBox.information(self, "이미 연결됨", "해당 RTSP 소스는 이미 연결되어 있습니다.")
                 return
-        self._add_source(url, f"IP 카메라: {url.split('@')[-1][:30]}")
+        self._add_source(url, f"IP 카메라 {self._next_id}")
+        self.edit_rtsp.clear()
 
     # ------------------------------------------------------------------ 재생 제어
     def _on_pause_toggled(self, sid: int, paused: bool):
@@ -589,8 +590,8 @@ class MainWindow(QMainWindow):
     def _update_behavior_label(self):
         from core.labels import label_kr
         # 모든 소스 중 가장 신뢰도 높은 이상행동을 대표로 표시
-        best_abn = None     # (conf, class_id, title)
-        best_norm = None    # (conf,)
+        best_abn = None     # 신뢰도, 클래스 번호와 소스 제목
+        best_norm = None    # 신뢰도를 기준으로 비교한다.
         for src in self._sources.values():
             cid, conf = src["behavior"]
             if cid > 0:

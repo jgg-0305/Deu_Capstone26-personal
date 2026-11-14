@@ -1,0 +1,183 @@
+{
+  "review_date": "2026-11-14",
+  "upstream_commit": "9dfce34db59ca49442acfa284dd7eb02bc05b7ea",
+  "video": {
+    "file": "demo-2.mp4",
+    "sha256": "01e5ed58c8d773ed26928acf2e14684c0a6eb187db27137243e7910635296181",
+    "kind": "screen_recording_of_original_GUI_not_raw_CCTV",
+    "frames": 618,
+    "width": 1280,
+    "height": 940
+  },
+  "meaning": "Compatibility and end-to-end regression checks; NOT labeled-data accuracy, precision, or recall. Observations can repeat the same person/event.",
+  "settings": {
+    "pose_model": "yolo11s-pose.pt",
+    "behavior": "train/1_behavior/output/kpt_behavior.pth",
+    "resolution": 480,
+    "detection_interval": 1,
+    "detection_confidence": 0.9,
+    "behavior_display_threshold": 0.5,
+    "event_threshold": 0.6,
+    "alert_threshold": 0.9
+  },
+  "before_fix_comparison": [
+    {
+      "configuration": "web_before",
+      "frames": 618,
+      "seconds": 35.96,
+      "original_abnormal_observations": 355,
+      "web_abnormal_observations": 35,
+      "suppressed_50_to_90": 320,
+      "original_visible": {
+        "0": 203,
+        "1": 180,
+        "6": 175
+      },
+      "web_visible": {
+        "0": 105,
+        "1": 10,
+        "6": 25
+      }
+    },
+    {
+      "configuration": "demo_settings",
+      "frames": 618,
+      "seconds": 71.53,
+      "original_abnormal_observations": 149,
+      "web_abnormal_observations": 63,
+      "suppressed_50_to_90": 86,
+      "original_visible": {
+        "0": 257,
+        "6": 149
+      },
+      "web_visible": {
+        "0": 247,
+        "6": 63
+      }
+    }
+  ],
+  "cached_detection_replay": {
+    "detection_frames": 927,
+    "different_outputs": 0
+  },
+  "full_pipeline_before_thread_fix": {
+    "frames": 618,
+    "timeline_rows": 619,
+    "classifier_inferences": 83,
+    "abnormal_observations": 149,
+    "baseline_different_frames": 0,
+    "fps": 4.4,
+    "elapsed_seconds": 144.6,
+    "events": [
+      {
+        "kind": "theft_suspected",
+        "score": null,
+        "method": "rule",
+        "time_ms": 21981
+      },
+      {
+        "kind": "theft_suspected",
+        "score": 0.6342039108276367,
+        "method": "model",
+        "time_ms": 18710
+      },
+      {
+        "kind": "theft_suspected",
+        "score": 0.615805983543396,
+        "method": "model",
+        "time_ms": 12963
+      },
+      {
+        "kind": "theft_suspected",
+        "score": null,
+        "method": "rule",
+        "time_ms": 11421
+      },
+      {
+        "kind": "theft_suspected",
+        "score": null,
+        "method": "rule",
+        "time_ms": 10978
+      },
+      {
+        "kind": "theft_suspected",
+        "score": 0.7087447643280029,
+        "method": "model",
+        "time_ms": 9934
+      }
+    ],
+    "video_range_status": 206
+  },
+  "full_pipeline_final": {
+    "frames": 618,
+    "timeline_rows": 619,
+    "classifier_inferences": 83,
+    "abnormal_observations": 149,
+    "baseline_different_frames": 0,
+    "fps": 7.0,
+    "cpu_threads": 2,
+    "elapsed_seconds": 90.0,
+    "events": [
+      {
+        "kind": "theft_suspected",
+        "score": null,
+        "method": "rule",
+        "time_ms": 21981
+      },
+      {
+        "kind": "theft_suspected",
+        "score": 0.6342040300369263,
+        "method": "model",
+        "time_ms": 18710
+      },
+      {
+        "kind": "theft_suspected",
+        "score": 0.615805983543396,
+        "method": "model",
+        "time_ms": 12963
+      },
+      {
+        "kind": "theft_suspected",
+        "score": null,
+        "method": "rule",
+        "time_ms": 11421
+      },
+      {
+        "kind": "theft_suspected",
+        "score": null,
+        "method": "rule",
+        "time_ms": 10978
+      },
+      {
+        "kind": "theft_suspected",
+        "score": 0.7087447643280029,
+        "method": "model",
+        "time_ms": 9934
+      }
+    ],
+    "video_range_status": 206
+  },
+  "comparison_tolerance": {
+    "class": "exact",
+    "score_absolute_error": 1e-05
+  },
+  "browser": {
+    "keypoint_diameter_css_px_before_resize": 3.39999,
+    "keypoint_diameter_css_px_after_resize": 3.39996,
+    "raw_and_AI_view_switch": "passed",
+    "video_aspect_ratio": "passed",
+    "slow_analysis_pause_resume": "passed",
+    "console_errors": 0
+  },
+  "environment": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "python": "3.12.13",
+    "validation_os": "macOS; Windows commands documented, not executed",
+    "macos": "27.2",
+    "torch": "2.15.0",
+    "ultralytics": "8.4.212",
+    "opencv-python": "5.0.0.93",
+    "deep-sort-realtime": "1.3.2"
+  }
+}

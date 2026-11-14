@@ -1,0 +1,249 @@
+{
+  "manifest_version": 1,
+  "verified_date": "2026-11-13",
+  "timezone": "Asia/Seoul",
+  "project": {
+    "repository": "https://github.com/jgg-0305/Deu_Capstone26-personal",
+    "branch": "main",
+    "commit": "c7a73419d48bfa861640838f833082487ddae6d1"
+  },
+  "upstream": {
+    "repository": "https://github.com/peanutcorn/Deu_Capstone26",
+    "branch": "master",
+    "commit": "9dfce34db59ca49442acfa284dd7eb02bc05b7ea",
+    "latest_ref_check": "live git ls-remote on review date"
+  },
+  "verification": {
+    "artifact_sources_compared": [
+      "working_tree",
+      "main",
+      "upstream/master"
+    ],
+    "safe_inspection": "YOLO metadata inspected using zipfile and pickletools without executing pickle; behavior state_dict loaded with torch.load(weights_only=True)",
+    "not_verified": [
+      "independent detection accuracy",
+      "production camera operation",
+      "real payment status",
+      "live notification delivery",
+      "deployment throughput"
+    ],
+    "files_modified_by_audit": [
+      "docs/design/model-audit.md",
+      "docs/design/model-manifest.json"
+    ],
+    "executed_inference_regression": {
+      "date": "2026-11-14",
+      "report": "docs/design/demo-regression-review.md",
+      "metrics": "docs/design/demo-regression-results.json"
+    }
+  },
+  "models": [
+    {
+      "id": "human_pose",
+      "path": "yolo11n-pose.pt",
+      "role": "human_and_keypoint_detection",
+      "bytes": 6255593,
+      "git_blob": "f8e737050f8d2804e568e77627a538ae684b44d6",
+      "sha256": "869e83fcdffdc7371fa4e34cd8e51c838cc729571d1635e5141e3075e9319dc0",
+      "architecture": "Ultralytics YOLO11n PoseModel",
+      "classes": {
+        "0": "person"
+      },
+      "keypoint_shape": [
+        17,
+        3
+      ],
+      "checkpoint_metadata": {
+        "ultralytics_version": "8.2.100",
+        "saved_at": "2024-09-25T21:10:28.031356"
+      },
+      "verified_scope": [
+        "git_blob_equal_in_worktree_main_upstream",
+        "sha256",
+        "safe_zip_pickle_opcode_metadata",
+        "demo_2_real_video_inference"
+      ],
+      "not_verified": [
+        "accuracy"
+      ]
+    },
+    {
+      "id": "store_objects",
+      "path": "model/objects.pt",
+      "role": "stand_and_pos_detection",
+      "bytes": 5473924,
+      "git_blob": "4e4f216232664a0e0a16898498edf609d91efab1",
+      "sha256": "6afca46956153841e3cb95b515a0d9e816cb0f84d2ad2be8594e95b45e6732ac",
+      "architecture": "Ultralytics DetectionModel; custom stand/POS detector",
+      "classes": {
+        "0": "stand",
+        "1": "pos"
+      },
+      "checkpoint_metadata": {
+        "ultralytics_version": "8.4.46",
+        "saved_at": "2026-06-22T21:55:36.057369",
+        "training_metrics": {
+          "precision_box": 0.58459,
+          "recall_box": 0.54018,
+          "map50_box": 0.47681,
+          "map50_95_box": 0.38734
+        },
+        "metrics_provenance": "Embedded checkpoint metadata only; not independently remeasured in this audit"
+      },
+      "verified_scope": [
+        "git_blob_equal_in_worktree_main_upstream",
+        "sha256",
+        "safe_zip_pickle_opcode_metadata",
+        "demo_2_real_video_inference"
+      ],
+      "not_verified": [
+        "independent_accuracy",
+        "training_dataset_reproduction"
+      ]
+    },
+    {
+      "id": "behavior",
+      "path": "train/1_behavior/output/kpt_behavior.pth",
+      "role": "per_track_keypoint_sequence_behavior_classification",
+      "bytes": 2466044,
+      "git_blob": "45cc03ce078147f6e29f9e65da374d31e61bf464",
+      "sha256": "f9412d9d09ffe6be0132bb310725e18aa49fa06bbb79e475b5d08a76e991c41a",
+      "architecture": "KeypointLSTMv2: position_and_velocity + two_layer_BiLSTM + attention_pooling",
+      "classes": {
+        "0": "normal",
+        "1": "fall",
+        "2": "vandalism",
+        "3": "arson",
+        "4": "smoking",
+        "5": "abandon",
+        "6": "theft",
+        "7": "assault"
+      },
+      "input_shape": [
+        "batch",
+        30,
+        34
+      ],
+      "output_shape": [
+        "batch",
+        8
+      ],
+      "state_dict_key_count": 24,
+      "verified_scope": [
+        "git_blob_equal_in_worktree_main_upstream",
+        "sha256",
+        "weights_only_true_state_dict_load",
+        "strict_load_with_repository_runtime_model",
+        "finite_output_for_zero_tensor_1x30x34",
+        "demo_2_real_video_inference"
+      ],
+      "not_verified": [
+        "independent_behavior_accuracy",
+        "calibration",
+        "performance_on_real_store_video"
+      ]
+    },
+    {
+      "id": "behavior_kpt_v1",
+      "optional": true,
+      "path": "kpt_behavior.pth",
+      "role": "behavior_classification",
+      "bytes": 902916,
+      "sha256": "18ca0e846519b1db10b1846e531329ff7bd1ce22b674527e618f194e145d5d85",
+      "architecture": "KeypointLSTM v1 (34 coordinates)",
+      "classes": {
+        "0": "normal",
+        "1": "fall",
+        "2": "vandalism",
+        "3": "arson",
+        "4": "smoking",
+        "5": "abandon",
+        "6": "theft",
+        "7": "assault"
+      },
+      "input_shape": [
+        1,
+        30,
+        34
+      ]
+    },
+    {
+      "id": "behavior_rgb",
+      "optional": true,
+      "path": "model_final.pth",
+      "role": "behavior_classification",
+      "bytes": 292045345,
+      "sha256": "23efde6391b603224fc0dfb6a7268fa01c3b10b01a650cc7d86c91f530b5a9d9",
+      "architecture": "ResNet50 + LSTM (BGR scene classifier)",
+      "classes": {
+        "0": "normal",
+        "1": "fall",
+        "2": "vandalism",
+        "3": "arson",
+        "4": "smoking",
+        "5": "abandon",
+        "6": "theft",
+        "7": "assault"
+      },
+      "input_shape": [
+        1,
+        3,
+        3,
+        224,
+        224
+      ]
+    },
+    {
+      "id": "human_pose_s",
+      "optional": true,
+      "path": "yolo11s-pose.pt",
+      "role": "human_and_keypoint_detection",
+      "bytes": 20373161,
+      "sha256": "1060bda4a27012060eca246f9b2adeea22eabb045a1e58f8d229be29b7ebc2ba",
+      "version": "ultralytics-assets-v8.3.0",
+      "source_url": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s-pose.pt",
+      "architecture": "Ultralytics YOLO11s PoseModel",
+      "classes": {
+        "0": "person"
+      },
+      "keypoint_shape": [
+        17,
+        3
+      ],
+      "verified_scope": [
+        "official_release_download",
+        "sha256",
+        "demo_2_frame_inference"
+      ],
+      "not_verified": [
+        "exact_identity_with_model_used_to_record_demo",
+        "independent_accuracy"
+      ]
+    }
+  ],
+  "package_model_dependencies": [
+    {
+      "id": "deepsort_appearance_embedder",
+      "package": "deep-sort-realtime",
+      "installed_version": "1.3.2",
+      "package_relative_path": "embedder/weights/mobilenetv2_bottleneck_wts.pt",
+      "role": "appearance_embeddings_for_person_tracking",
+      "architecture": "MobileNetV2_bottle",
+      "bytes": 9084095,
+      "sha256": "2f518e773d4402dde55f981ae3078a72ba95c3adccae1d55051a4be844d50197",
+      "in_project_git": false,
+      "default_loading": "Bundled package weights file; installed implementation asserts file existence rather than downloading in this default path",
+      "verified_scope": [
+        "installed_package_source_inspection",
+        "local_file_exists",
+        "bytes",
+        "sha256"
+      ],
+      "not_verified": [
+        "embedder_inference",
+        "future_distribution_bundle_contents"
+      ]
+    }
+  ],
+  "updated_date": "2026-11-14"
+}

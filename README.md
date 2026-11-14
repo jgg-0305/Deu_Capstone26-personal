@@ -72,29 +72,27 @@ proto-cctv/
 
 ## 설치 및 실행
 
+### Windows PowerShell
+
 ```powershell
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt        # CUDA면 PyTorch 별도 선설치 권장
-
-.\.venv\Scripts\python.exe main.py     # 또는 run.bat 더블클릭
+py -3.12 -m venv .venv
+$Py = ".\.venv\Scripts\python.exe"
+& $Py -m pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu124
+& $Py main.py
 ```
 
-## 카카오 알림 설정
+### macOS Terminal
 
-카카오 인증 정보는 Git에 포함되지 않습니다. 환경 변수 `KAKAO_REST_API_KEY`와
-`KAKAO_ACCESS_TOKEN`을 설정하거나 프로젝트 루트의 `kakao_local_config.json`에
-다음 형식으로 저장하세요. 액세스 토큰은 카카오 로그인으로 발급받을 수도 있습니다.
-
-```json
-{
-  "rest_api_key": "YOUR_KAKAO_REST_API_KEY",
-  "access_token": "YOUR_KAKAO_ACCESS_TOKEN"
-}
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r backend/requirements-worker.txt PyQt5
+python main.py
 ```
 
-로그인으로 발급받은 토큰은 `kakao_tokens.json`에 저장되며, 두 JSON 파일은
-Git에서 제외됩니다.
+## 웹 백엔드
+
+웹 관제실에서는 MP4·웹캠·RTSP 카메라를 추가하고 바둑판, 계단식, 집중 보기로 배치할 수 있습니다. PostgreSQL 초기화와 Windows·macOS에서의 실행 및 카메라 연결 방법은 [백엔드 실행 가이드](backend/README.md)를 참고하세요.
 
 ## 사용 방법
 
@@ -109,30 +107,46 @@ Git에서 제외됩니다.
 
 ## 학습 (재훈련)
 
-### 행동 분류 모델 (`kpt_behavior.pth`)
-`train/1_behavior/split/data/` 하위 클래스 폴더(`01/04/05` 정상, `07~13` 이상행동)의 mp4 사용.
+학습 데이터와 프로젝트 가중치는 별도로 백업한다. 학습 스크립트는 결과 파일을 갱신하므로, 웹 백엔드에서 새 가중치를 사용하려면 모델 manifest의 버전·해시도 갱신해야 한다.
+
+### Windows PowerShell
 
 ```powershell
-cd train\1_behavior
-Remove-Item split\kpt_train*.npz, split\kpt_val.npz -EA SilentlyContinue
-
-python extract_kpts_video.py    # ① 영상 → 키포인트 npz
-Copy-Item split\kpt_train.npz split\kpt_train_raw.npz
-python refine_dataset.py --in-npz split\kpt_train_raw.npz --out-npz split\kpt_train.npz  # ② 정제
-python demo_onset.py --repeat 20   # ③ 데모 영상 온셋(시작 프레임) 시간 라벨 추가
-python train_kpt.py             # ④ 학습 → output/kpt_behavior.pth 자동 배포
+$Py = (Resolve-Path ".\.venv\Scripts\python.exe").Path
+Push-Location train/1_behavior
+Remove-Item split/kpt_train*.npz, split/kpt_val.npz -ErrorAction SilentlyContinue
+& $Py extract_kpts_video.py
+Copy-Item split/kpt_train.npz split/kpt_train_raw.npz
+& $Py refine_dataset.py --in-npz split/kpt_train_raw.npz --out-npz split/kpt_train.npz
+& $Py demo_onset.py --repeat 20
+& $Py train_kpt.py
+Pop-Location
+Push-Location train/3_stand
+& $Py auto_label.py
+& $Py train_stand.py
+Pop-Location
 ```
 
-### 가판대·결제기 모델 (`objects.pt`)
-```powershell
-cd train\3_stand
-python auto_label.py    # YOLO-World 로 매장 영상 의사 라벨링
-python train_stand.py   # 학습 → model/objects.pt 자동 배포
+### macOS Terminal
+
+```bash
+source .venv/bin/activate
+(
+  cd train/1_behavior || exit
+  find split -maxdepth 1 -type f \( -name 'kpt_train*.npz' -o -name 'kpt_val.npz' \) -delete
+  python extract_kpts_video.py
+  cp split/kpt_train.npz split/kpt_train_raw.npz
+  python refine_dataset.py --in-npz split/kpt_train_raw.npz --out-npz split/kpt_train.npz
+  python demo_onset.py --repeat 20
+  python train_kpt.py
+)
+(
+  cd train/3_stand || exit
+  python auto_label.py
+  python train_stand.py
+)
 ```
 
 ## 라이선스
 
 학술 목적으로 제작되었습니다.
-
-## RTSP 테스트 계정
-`rtsp://capstonetc72deu:officedeuackr26@172.30.1.93:554/stream1`

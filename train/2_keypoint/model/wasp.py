@@ -74,7 +74,7 @@ class WASP(nn.Module):
 
         x5 = F.interpolate(self.global_pool(x), size=x4.shape[2:],
                            mode="bilinear", align_corners=True)
-        out = torch.cat([x1, x2, x3, x4, x5], dim=1)  # (B, 1280, H, W)
+        out = torch.cat([x1, x2, x3, x4, x5], dim=1)  # 배치별 1280채널 특징 지도
         out = self.relu(self.bn1(self.conv1(out)))
         return self.dropout(out)
 

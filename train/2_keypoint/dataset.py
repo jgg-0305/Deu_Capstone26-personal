@@ -132,8 +132,8 @@ class KeypointDataset(Dataset):
 
         center = np.array(ann["center"], dtype=np.float64)
         scale = float(ann["scale"])
-        joints = np.array(ann["joints"], dtype=np.float64)    # (17, 2)
-        joints_vis = np.array(ann["joints_vis"], dtype=int)    # (17,)
+        joints = np.array(ann["joints"], dtype=np.float64)    # 관절 17개의 좌표
+        joints_vis = np.array(ann["joints_vis"], dtype=int)    # 관절 17개의 가시성 값
 
         # 중심/스케일 미세 조정 (source 와 동일)
         center[1] += 15 * scale
@@ -158,7 +158,7 @@ class KeypointDataset(Dataset):
                     joints_vis[[lp, rp]] = joints_vis[[rp, lp]]
                 center[0] = w - 1 - center[0]
 
-        # Affine crop → (IMAGE_H, IMAGE_W)
+        # 아핀 변환으로 지정된 높이와 너비의 영상을 얻는다.
         mat = _get_affine_transform(center, scale, rot,
                                     (C.IMAGE_W, C.IMAGE_H))
         img = cv2.warpAffine(img, mat, (C.IMAGE_W, C.IMAGE_H),

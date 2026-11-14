@@ -1,0 +1,1408 @@
+{
+  "review_date": "2026-11-14",
+  "input_kind": "AI-Hub 71550 원본 MP4, 화면 녹화 제외",
+  "dataset_inventory": {
+    "distinct_filenames": 80,
+    "copies_with_same_filenames": 80,
+    "annotation_xml_count": 0,
+    "category": "절도",
+    "selected_clips": 6,
+    "tested_unique_frames": 1080
+  },
+  "raw_file_integrity": {
+    "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CF_RGB_DF2_F2.mp4",
+    "zip_crc32": 3321997141,
+    "extracted_crc32": 3321997141,
+    "matches": true
+  },
+  "before": [
+    {
+      "id": "1",
+      "name": "C_3_12_41_BU_DYA_07-29_15-20-29_CD_RGB_DF2_F2.mp4",
+      "frames": 180,
+      "seconds": 18.04,
+      "results": {
+        "0.9": {
+          "empty_detection_frames": 101,
+          "detections": 79,
+          "tracking_frames": 78,
+          "ids": 1,
+          "buffer_resets": 12,
+          "predictions": {
+            "v1": {},
+            "v2": {}
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0,
+            "v2": 0
+          },
+          "inference_calls": {
+            "v2": 0,
+            "v1": 0
+          }
+        },
+        "0.4": {
+          "empty_detection_frames": 8,
+          "detections": 172,
+          "tracking_frames": 170,
+          "ids": 1,
+          "buffer_resets": 2,
+          "predictions": {
+            "v1": {
+              "1": 15,
+              "0": 96,
+              "6": 25
+            },
+            "v2": {
+              "2": 20,
+              "0": 90,
+              "1": 5,
+              "4": 10,
+              "6": 11
+            }
+          },
+          "theft_frames": {
+            "v1": 15,
+            "v2": 6
+          },
+          "max_theft_score": {
+            "v1": 0.8373032808303833,
+            "v2": 0.6878260374069214
+          },
+          "inference_calls": {
+            "v2": 28,
+            "v1": 28
+          }
+        }
+      }
+    },
+    {
+      "id": "2",
+      "name": "C_3_12_41_BU_DYA_07-29_15-20-29_CF_RGB_DF2_F2.mp4",
+      "frames": 180,
+      "seconds": 17.39,
+      "results": {
+        "0.9": {
+          "empty_detection_frames": 112,
+          "detections": 68,
+          "tracking_frames": 66,
+          "ids": 2,
+          "buffer_resets": 15,
+          "predictions": {
+            "v1": {},
+            "v2": {}
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0,
+            "v2": 0
+          },
+          "inference_calls": {
+            "v2": 0,
+            "v1": 0
+          }
+        },
+        "0.4": {
+          "empty_detection_frames": 21,
+          "detections": 159,
+          "tracking_frames": 158,
+          "ids": 1,
+          "buffer_resets": 1,
+          "predictions": {
+            "v1": {
+              "0": 99,
+              "1": 5,
+              "2": 15,
+              "4": 10
+            },
+            "v2": {
+              "0": 30,
+              "1": 30,
+              "4": 59,
+              "5": 10
+            }
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0.4551846385002136,
+            "v2": 0.10271172225475311
+          },
+          "inference_calls": {
+            "v2": 26,
+            "v1": 26
+          }
+        }
+      }
+    },
+    {
+      "id": "3",
+      "name": "C_3_12_43_BU_DYB_10-16_14-55-05_CA_RGB_DF2_F1.mp4",
+      "frames": 180,
+      "seconds": 14.87,
+      "results": {
+        "0.9": {
+          "empty_detection_frames": 179,
+          "detections": 1,
+          "tracking_frames": 0,
+          "ids": 0,
+          "buffer_resets": 0,
+          "predictions": {
+            "v1": {},
+            "v2": {}
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0,
+            "v2": 0
+          },
+          "inference_calls": {
+            "v2": 0,
+            "v1": 0
+          }
+        },
+        "0.4": {
+          "empty_detection_frames": 51,
+          "detections": 130,
+          "tracking_frames": 128,
+          "ids": 4,
+          "buffer_resets": 4,
+          "predictions": {
+            "v1": {
+              "5": 3,
+              "0": 66,
+              "6": 25,
+              "2": 5
+            },
+            "v2": {
+              "0": 88,
+              "3": 5,
+              "2": 6
+            }
+          },
+          "theft_frames": {
+            "v1": 5,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0.6131247282028198,
+            "v2": 0.3508789837360382
+          },
+          "inference_calls": {
+            "v2": 21,
+            "v1": 21
+          }
+        }
+      }
+    },
+    {
+      "id": "4",
+      "name": "C_3_12_45_BU_SMC_10-14_16-07-18_CC_RGB_DF2_M3.mp4",
+      "frames": 180,
+      "seconds": 17.27,
+      "results": {
+        "0.9": {
+          "empty_detection_frames": 136,
+          "detections": 44,
+          "tracking_frames": 42,
+          "ids": 4,
+          "buffer_resets": 15,
+          "predictions": {
+            "v1": {},
+            "v2": {}
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0,
+            "v2": 0
+          },
+          "inference_calls": {
+            "v2": 0,
+            "v1": 0
+          }
+        },
+        "0.4": {
+          "empty_detection_frames": 33,
+          "detections": 147,
+          "tracking_frames": 146,
+          "ids": 1,
+          "buffer_resets": 1,
+          "predictions": {
+            "v1": {
+              "0": 52,
+              "6": 10,
+              "2": 55
+            },
+            "v2": {
+              "0": 75,
+              "6": 42
+            }
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 27
+          },
+          "max_theft_score": {
+            "v1": 0.5444678664207458,
+            "v2": 0.7322701215744019
+          },
+          "inference_calls": {
+            "v2": 24,
+            "v1": 24
+          }
+        }
+      }
+    },
+    {
+      "id": "5",
+      "name": "C_3_12_48_BU_DYA_07-29_14-11-06_CE_RGB_DF2_F2.mp4",
+      "frames": 180,
+      "seconds": 17.12,
+      "results": {
+        "0.9": {
+          "empty_detection_frames": 109,
+          "detections": 71,
+          "tracking_frames": 69,
+          "ids": 5,
+          "buffer_resets": 25,
+          "predictions": {
+            "v1": {},
+            "v2": {}
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0,
+            "v2": 0
+          },
+          "inference_calls": {
+            "v2": 0,
+            "v1": 0
+          }
+        },
+        "0.4": {
+          "empty_detection_frames": 8,
+          "detections": 174,
+          "tracking_frames": 171,
+          "ids": 2,
+          "buffer_resets": 0,
+          "predictions": {
+            "v1": {
+              "0": 122,
+              "6": 20
+            },
+            "v2": {
+              "4": 25,
+              "0": 107,
+              "6": 10
+            }
+          },
+          "theft_frames": {
+            "v1": 10,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0.6327860355377197,
+            "v2": 0.5505887269973755
+          },
+          "inference_calls": {
+            "v2": 29,
+            "v1": 29
+          }
+        }
+      }
+    },
+    {
+      "id": "6",
+      "name": "C_3_12_49_BU_DYB_10-17_13-47-59_CB_RGB_DF2_M3.mp4",
+      "frames": 180,
+      "seconds": 19.54,
+      "results": {
+        "0.9": {
+          "empty_detection_frames": 147,
+          "detections": 33,
+          "tracking_frames": 31,
+          "ids": 2,
+          "buffer_resets": 20,
+          "predictions": {
+            "v1": {},
+            "v2": {}
+          },
+          "theft_frames": {
+            "v1": 0,
+            "v2": 0
+          },
+          "max_theft_score": {
+            "v1": 0,
+            "v2": 0
+          },
+          "inference_calls": {
+            "v2": 0,
+            "v1": 0
+          }
+        },
+        "0.4": {
+          "empty_detection_frames": 37,
+          "detections": 143,
+          "tracking_frames": 142,
+          "ids": 2,
+          "buffer_resets": 2,
+          "predictions": {
+            "v1": {
+              "2": 5,
+              "0": 20,
+              "6": 88
+            },
+            "v2": {
+              "6": 113
+            }
+          },
+          "theft_frames": {
+            "v1": 83,
+            "v2": 93
+          },
+          "max_theft_score": {
+            "v1": 0.9163365960121155,
+            "v2": 0.9065168499946594
+          },
+          "inference_calls": {
+            "v2": 23,
+            "v1": 23
+          }
+        }
+      }
+    }
+  ],
+  "after_s480": {
+    "settings": {
+      "pose": "yolo11s-pose.pt",
+      "resolution": 480,
+      "confidence": 0.4,
+      "rgb": true
+    },
+    "videos": [
+      {
+        "id": "1",
+        "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CD_RGB_DF2_F2.mp4",
+        "sha256": "be22149697daf1dc7458b020650cba563e65e440cd76371b70dc7d2d343f7f96",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 8,
+        "observed_frames": 170,
+        "predicted_only_frames": 7,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 29,
+          "v1": 29,
+          "rgb": 178
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "2": 10,
+            "0": 110,
+            "4": 10,
+            "6": 11
+          },
+          "v1": {
+            "0": 111,
+            "1": 10,
+            "6": 20
+          },
+          "rgb": {
+            "0": 178
+          }
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 11,
+            "first_ms": 54000,
+            "last_ms": 57667
+          },
+          "v1": {
+            "frames": 20,
+            "first_ms": 42333,
+            "last_ms": 48667
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 9.83
+      },
+      {
+        "id": "2",
+        "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CF_RGB_DF2_F2.mp4",
+        "sha256": "e95d5af49024ccac96cf46584d0a788dcbacf45e60e59374b345c23491ab307d",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 21,
+        "observed_frames": 158,
+        "predicted_only_frames": 12,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 26,
+          "v1": 26,
+          "rgb": 178
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "4": 69,
+            "0": 45,
+            "1": 15
+          },
+          "v1": {
+            "0": 119,
+            "1": 10
+          },
+          "rgb": {
+            "0": 178
+          }
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 9.48
+      },
+      {
+        "id": "3",
+        "file": "C_3_12_43_BU_DYB_10-16_14-55-05_CA_RGB_DF2_F1.mp4",
+        "sha256": "175e001d13f6af4cc25b6e6de780d979884e78ac592135f6b766c2385d69cb9d",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 51,
+        "observed_frames": 123,
+        "predicted_only_frames": 35,
+        "track_ids": 4,
+        "inference_calls": {
+          "v2": 18,
+          "v1": 18,
+          "rgb": 178
+        },
+        "buffer_resets": 4,
+        "class_observations": {
+          "v2": {
+            "0": 84,
+            "3": 5
+          },
+          "v1": {
+            "0": 69,
+            "3": 15,
+            "6": 5
+          },
+          "rgb": {
+            "0": 178
+          }
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 8.64
+      },
+      {
+        "id": "4",
+        "file": "C_3_12_45_BU_SMC_10-14_16-07-18_CC_RGB_DF2_M3.mp4",
+        "sha256": "daccdbfe7bd97b65fce97fcd64b2ac25948330ba1997522e89b05a437fa2ac8b",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 33,
+        "observed_frames": 146,
+        "predicted_only_frames": 24,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 24,
+          "v1": 24,
+          "rgb": 178
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "0": 85,
+            "6": 32
+          },
+          "v1": {
+            "0": 40,
+            "6": 47,
+            "2": 30
+          },
+          "rgb": {
+            "0": 178
+          }
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 10,
+            "first_ms": 44667,
+            "last_ms": 47667
+          },
+          "v1": {
+            "frames": 37,
+            "first_ms": 39667,
+            "last_ms": 51667
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 1,
+        "evaluation_seconds": 9.17
+      },
+      {
+        "id": "5",
+        "file": "C_3_12_48_BU_DYA_07-29_14-11-06_CE_RGB_DF2_F2.mp4",
+        "sha256": "4011594343346a99f501051fad219985b0cc25d4e3c82ba306d2ef7d2b71671e",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 8,
+        "observed_frames": 170,
+        "predicted_only_frames": 1,
+        "track_ids": 2,
+        "inference_calls": {
+          "v2": 26,
+          "v1": 26,
+          "rgb": 178
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "4": 30,
+            "0": 88,
+            "6": 10
+          },
+          "v1": {
+            "0": 88,
+            "6": 25,
+            "4": 15
+          },
+          "rgb": {
+            "0": 178
+          }
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 5,
+            "first_ms": 46000,
+            "last_ms": 47333
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 9.99
+      },
+      {
+        "id": "6",
+        "file": "C_3_12_49_BU_DYB_10-17_13-47-59_CB_RGB_DF2_M3.mp4",
+        "sha256": "2b735e6757c31db9d25b2d3abc2f37898fcd50b4d01f58c280d23f86fc815ac1",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 37,
+        "observed_frames": 141,
+        "predicted_only_frames": 30,
+        "track_ids": 2,
+        "inference_calls": {
+          "v2": 21,
+          "v1": 21,
+          "rgb": 178
+        },
+        "buffer_resets": 1,
+        "class_observations": {
+          "v2": {
+            "6": 100,
+            "0": 5
+          },
+          "v1": {
+            "0": 25,
+            "6": 80
+          },
+          "rgb": {
+            "0": 178
+          }
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 85,
+            "first_ms": 12667,
+            "last_ms": 47333
+          },
+          "v1": {
+            "frames": 65,
+            "first_ms": 22667,
+            "last_ms": 47333
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 9.1
+      }
+    ],
+    "scope": "정답 구간 XML이 없는 진단 결과이며, 클래스별 정확도나 오탐률이 아닙니다."
+  },
+  "alternative_n640": {
+    "settings": {
+      "pose": "yolo11n-pose.pt",
+      "resolution": 640,
+      "confidence": 0.4,
+      "rgb": false
+    },
+    "videos": [
+      {
+        "id": "1",
+        "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CD_RGB_DF2_F2.mp4",
+        "sha256": "be22149697daf1dc7458b020650cba563e65e440cd76371b70dc7d2d343f7f96",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 6,
+        "observed_frames": 172,
+        "predicted_only_frames": 7,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 28,
+          "v1": 28
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "0": 115,
+            "1": 10,
+            "4": 10,
+            "6": 8
+          },
+          "v1": {
+            "0": 103,
+            "1": 25,
+            "6": 15
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 8,
+            "first_ms": 55000,
+            "last_ms": 57667
+          },
+          "v1": {
+            "frames": 10,
+            "first_ms": 45000,
+            "last_ms": 48000
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 16.46
+      },
+      {
+        "id": "2",
+        "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CF_RGB_DF2_F2.mp4",
+        "sha256": "e95d5af49024ccac96cf46584d0a788dcbacf45e60e59374b345c23491ab307d",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 21,
+        "observed_frames": 158,
+        "predicted_only_frames": 12,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 26,
+          "v1": 26
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "4": 64,
+            "0": 45,
+            "1": 10,
+            "5": 10
+          },
+          "v1": {
+            "0": 119,
+            "1": 10
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 16.0
+      },
+      {
+        "id": "3",
+        "file": "C_3_12_43_BU_DYB_10-16_14-55-05_CA_RGB_DF2_F1.mp4",
+        "sha256": "175e001d13f6af4cc25b6e6de780d979884e78ac592135f6b766c2385d69cb9d",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 51,
+        "observed_frames": 124,
+        "predicted_only_frames": 34,
+        "track_ids": 4,
+        "inference_calls": {
+          "v2": 18,
+          "v1": 18
+        },
+        "buffer_resets": 4,
+        "class_observations": {
+          "v2": {
+            "0": 39,
+            "7": 30,
+            "2": 20
+          },
+          "v1": {
+            "0": 35,
+            "7": 25,
+            "6": 29
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 29,
+            "first_ms": 34333,
+            "last_ms": 43667
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 15.29
+      },
+      {
+        "id": "4",
+        "file": "C_3_12_45_BU_SMC_10-14_16-07-18_CC_RGB_DF2_M3.mp4",
+        "sha256": "daccdbfe7bd97b65fce97fcd64b2ac25948330ba1997522e89b05a437fa2ac8b",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 33,
+        "observed_frames": 146,
+        "predicted_only_frames": 24,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 24,
+          "v1": 24
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "0": 70,
+            "6": 47
+          },
+          "v1": {
+            "0": 40,
+            "2": 25,
+            "6": 52
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 47,
+            "first_ms": 36333,
+            "last_ms": 51667
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 50,
+        "evaluation_seconds": 15.89
+      },
+      {
+        "id": "5",
+        "file": "C_3_12_48_BU_DYA_07-29_14-11-06_CE_RGB_DF2_F2.mp4",
+        "sha256": "4011594343346a99f501051fad219985b0cc25d4e3c82ba306d2ef7d2b71671e",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 5,
+        "observed_frames": 173,
+        "predicted_only_frames": 1,
+        "track_ids": 3,
+        "inference_calls": {
+          "v2": 29,
+          "v1": 29
+        },
+        "buffer_resets": 1,
+        "class_observations": {
+          "v2": {
+            "3": 12,
+            "4": 30,
+            "0": 74,
+            "6": 25
+          },
+          "v1": {
+            "3": 12,
+            "6": 10,
+            "0": 94,
+            "4": 10,
+            "5": 15
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 5,
+            "first_ms": 30667,
+            "last_ms": 32000
+          },
+          "v1": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 17.35
+      },
+      {
+        "id": "6",
+        "file": "C_3_12_49_BU_DYB_10-17_13-47-59_CB_RGB_DF2_M3.mp4",
+        "sha256": "2b735e6757c31db9d25b2d3abc2f37898fcd50b4d01f58c280d23f86fc815ac1",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 37,
+        "observed_frames": 142,
+        "predicted_only_frames": 29,
+        "track_ids": 2,
+        "inference_calls": {
+          "v2": 21,
+          "v1": 21
+        },
+        "buffer_resets": 1,
+        "class_observations": {
+          "v2": {
+            "6": 105
+          },
+          "v1": {
+            "2": 5,
+            "0": 20,
+            "6": 80
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 100,
+            "first_ms": 12667,
+            "last_ms": 47333
+          },
+          "v1": {
+            "frames": 75,
+            "first_ms": 22667,
+            "last_ms": 47333
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 16.13
+      }
+    ],
+    "scope": "정답 구간 XML이 없는 진단 결과이며, 클래스별 정확도나 오탐률이 아닙니다."
+  },
+  "rgb_reference_compatibility": [
+    {
+      "time_s": 15,
+      "reference_label": 0,
+      "reference_score": 0.8366048336029053,
+      "worker_label": 0,
+      "worker_score": 0.8366048336029053,
+      "score_difference": 0.0
+    },
+    {
+      "time_s": 27,
+      "reference_label": 0,
+      "reference_score": 0.8366048336029053,
+      "worker_label": 0,
+      "worker_score": 0.8366048336029053,
+      "score_difference": 0.0
+    },
+    {
+      "time_s": 42,
+      "reference_label": 0,
+      "reference_score": 0.8366048336029053,
+      "worker_label": 0,
+      "worker_score": 0.8366048336029053,
+      "score_difference": 0.0
+    }
+  ],
+  "api_validation": [
+    {
+      "file": "C_3_12_49_BU_DYB_10-17_13-47-59_CB_RGB_DF2_M3.mp4",
+      "name": "원본 영상 검증 6",
+      "frames": 180,
+      "source_fps": 3.0,
+      "frame_duration_ms": 333.333,
+      "inferences": 21,
+      "events": [
+        {
+          "type": "theft_suspected",
+          "score": 0.7002384662628174,
+          "method": "model",
+          "time_ms": 21000
+        },
+        {
+          "type": "theft_suspected",
+          "score": 0.6199935674667358,
+          "method": "model",
+          "time_ms": 12667
+        }
+      ]
+    },
+    {
+      "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CF_RGB_DF2_F2.mp4",
+      "name": "원본 영상 검증 2",
+      "frames": 180,
+      "source_fps": 3.0,
+      "frame_duration_ms": 333.333,
+      "inferences": 26,
+      "events": [
+        {
+          "type": "smoking",
+          "score": 0.6680769920349121,
+          "method": "model",
+          "time_ms": 44667
+        },
+        {
+          "type": "smoking",
+          "score": 0.6409479379653931,
+          "method": "model",
+          "time_ms": 31333
+        },
+        {
+          "type": "fall",
+          "score": 0.6618501543998718,
+          "method": "model",
+          "time_ms": 21333
+        },
+        {
+          "type": "smoking",
+          "score": 0.6677472591400146,
+          "method": "model",
+          "time_ms": 13000
+        }
+      ]
+    }
+  ],
+  "browser": {
+    "source_fps": 3,
+    "late_in_frame_seek_seconds": 30.3,
+    "overlay_blank_checks": 25,
+    "unexpected_blank_checks": 0,
+    "uncertain_state_visible": true,
+    "javascript_errors": 0
+  },
+  "scope": "정답 구간 XML과 정상/다른 행동 검증셋이 없어 정확도·재현율·오탐률로 해석하지 않는다. 절도 출력 횟수는 정답 판정 횟수가 아니다.",
+  "training_encoding_diagnostic": {
+    "method": "동일한 YOLO11s 480 실제 검출 재사용. 저신뢰 관절을 픽셀 원점으로 바꾸고 정수 상자를 원본 kpt_common.encode_kpts에 전달. 행동 가중치와 임계값은 동일.",
+    "adopted_for_web": false,
+    "reason": "추출기 출력과 학습 증강 후 입력이 다르고, 체크포인트의 실제 학습 이력이 없음. 이 변경으로 CF 영상의 올바른 분류나 모델 성능 향상이 확인되지 않음.",
+    "videos": [
+      {
+        "id": "1",
+        "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CD_RGB_DF2_F2.mp4",
+        "sha256": "be22149697daf1dc7458b020650cba563e65e440cd76371b70dc7d2d343f7f96",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 8,
+        "observed_frames": 170,
+        "predicted_only_frames": 7,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 29,
+          "v1": 29
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "2": 15,
+            "0": 81,
+            "5": 20,
+            "4": 25
+          },
+          "v1": {
+            "1": 60,
+            "5": 46,
+            "0": 25,
+            "6": 10
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 5,
+            "first_ms": 44000,
+            "last_ms": 45333
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 4.52
+      },
+      {
+        "id": "2",
+        "file": "C_3_12_41_BU_DYA_07-29_15-20-29_CF_RGB_DF2_F2.mp4",
+        "sha256": "e95d5af49024ccac96cf46584d0a788dcbacf45e60e59374b345c23491ab307d",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 21,
+        "observed_frames": 158,
+        "predicted_only_frames": 12,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 26,
+          "v1": 26
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "0": 129
+          },
+          "v1": {
+            "6": 30,
+            "0": 49,
+            "1": 35,
+            "5": 15
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 10,
+            "first_ms": 13000,
+            "last_ms": 41000
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 4.13
+      },
+      {
+        "id": "3",
+        "file": "C_3_12_43_BU_DYB_10-16_14-55-05_CA_RGB_DF2_F1.mp4",
+        "sha256": "175e001d13f6af4cc25b6e6de780d979884e78ac592135f6b766c2385d69cb9d",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 51,
+        "observed_frames": 123,
+        "predicted_only_frames": 35,
+        "track_ids": 4,
+        "inference_calls": {
+          "v2": 18,
+          "v1": 18
+        },
+        "buffer_resets": 4,
+        "class_observations": {
+          "v2": {
+            "0": 89
+          },
+          "v1": {
+            "5": 70,
+            "1": 5,
+            "0": 14
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 3.52
+      },
+      {
+        "id": "4",
+        "file": "C_3_12_45_BU_SMC_10-14_16-07-18_CC_RGB_DF2_M3.mp4",
+        "sha256": "daccdbfe7bd97b65fce97fcd64b2ac25948330ba1997522e89b05a437fa2ac8b",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 33,
+        "observed_frames": 146,
+        "predicted_only_frames": 24,
+        "track_ids": 1,
+        "inference_calls": {
+          "v2": 24,
+          "v1": 24
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "0": 117
+          },
+          "v1": {
+            "5": 5,
+            "1": 45,
+            "0": 45,
+            "6": 22
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 17,
+            "first_ms": 46333,
+            "last_ms": 51667
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 1,
+        "evaluation_seconds": 3.91
+      },
+      {
+        "id": "5",
+        "file": "C_3_12_48_BU_DYA_07-29_14-11-06_CE_RGB_DF2_F2.mp4",
+        "sha256": "4011594343346a99f501051fad219985b0cc25d4e3c82ba306d2ef7d2b71671e",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 8,
+        "observed_frames": 170,
+        "predicted_only_frames": 1,
+        "track_ids": 2,
+        "inference_calls": {
+          "v2": 26,
+          "v1": 26
+        },
+        "buffer_resets": 0,
+        "class_observations": {
+          "v2": {
+            "4": 10,
+            "0": 103,
+            "6": 15
+          },
+          "v1": {
+            "0": 78,
+            "5": 50
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 4.74
+      },
+      {
+        "id": "6",
+        "file": "C_3_12_49_BU_DYB_10-17_13-47-59_CB_RGB_DF2_M3.mp4",
+        "sha256": "2b735e6757c31db9d25b2d3abc2f37898fcd50b4d01f58c280d23f86fc815ac1",
+        "source_fps": 3.0,
+        "frames": 180,
+        "input_window_seconds": 10.0,
+        "empty_detection_frames": 37,
+        "observed_frames": 141,
+        "predicted_only_frames": 30,
+        "track_ids": 2,
+        "inference_calls": {
+          "v2": 21,
+          "v1": 21
+        },
+        "buffer_resets": 1,
+        "class_observations": {
+          "v2": {
+            "2": 30,
+            "0": 75
+          },
+          "v1": {
+            "1": 5,
+            "5": 100
+          },
+          "rgb": {}
+        },
+        "theft_over_60_percent": {
+          "v2": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "v1": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          },
+          "rgb": {
+            "frames": 0,
+            "first_ms": null,
+            "last_ms": null
+          }
+        },
+        "rule_frames": 0,
+        "evaluation_seconds": 3.84
+      }
+    ],
+    "scope": "정답 구간 XML이 없는 진단 결과이며, 클래스별 정확도나 오탐률이 아닙니다."
+  }
+}

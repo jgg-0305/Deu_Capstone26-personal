@@ -74,7 +74,7 @@ class ResNet(nn.Module):
         else:
             raise NotImplementedError(f"output_stride {output_stride} not supported")
 
-        blocks = [1, 2, 4]  # MG unit
+        blocks = [1, 2, 4]  # 멀티그리드 블록
 
         self.conv1 = nn.Conv2d(3, 64, 7, stride=2, padding=3, bias=False)
         self.bn1 = BatchNorm(64)

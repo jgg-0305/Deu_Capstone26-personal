@@ -118,7 +118,8 @@ class TrackBehaviorBuffer:
     """
 
     def __init__(self, model_path: str, seq_len: int = 30, stride: int = 5,
-                 device=None, ema_alpha: float = 0.6, abn_conf_thr: float = 0.5):
+                 device=None, ema_alpha: float = 0.6, abn_conf_thr: float = 0.5,
+                 max_missing: int = 30, max_gap: int = 3):
         self.seq_len = seq_len
         self.stride = max(1, stride)
         # 예측 확률 시간 스무딩 계수 (이전 EMA 가중치) — 깜빡임·순간 오탐 억제
@@ -132,14 +133,19 @@ class TrackBehaviorBuffer:
         self.model = self._build_and_load(model_path)
         self.model.to(self.device).eval()
 
-        # track_id → deque[(34,)]
+        # 트랙별 34차원 관절 특징 버퍼
         self._bufs: dict[int, deque] = {}
         # track_id → frame 카운터
         self._cnts: dict[int, int] = {}
         # track_id → EMA 확률 벡터 (num_classes,)
         self._probs: dict[int, np.ndarray] = {}
-        # track_id → (class_id, conf)
+        # 트랙별 행동 클래스와 신뢰도
         self._results: dict[int, tuple] = {}
+        self.inference_count = 0
+        self.max_missing = max_missing
+        self.max_gap = max_gap
+        self._missing: dict[int, int] = {}
+        self.reset_count = 0
 
     @staticmethod
     def _build_and_load(path: str) -> nn.Module:
@@ -161,23 +167,32 @@ class TrackBehaviorBuffer:
 
     def update(self, tracks: list, kpt_map: dict) -> dict:
         """tracks, kpt_map 을 받아 결과 딕셔너리를 반환·갱신한다."""
-        active_ids = set()
+        observed_ids = set()
         for t in tracks:
             tid = t["track_id"]
-            active_ids.add(tid)
             vec = _encode(kpt_map.get(tid), t["bbox"])
+
+            if not t.get("observed", True) or not vec.any():
+                continue
+            observed_ids.add(tid)
+            if self._missing.get(tid, 0) > self.max_gap:
+                # 긴 가림 전후의 동작을 하나의 연속 시퀀스로 오인하지 않는다.
+                self._forget(tid)
 
             if tid not in self._bufs:
                 self._bufs[tid] = deque(maxlen=self.seq_len)
                 self._cnts[tid] = 0
+            self._missing[tid] = 0
 
             self._bufs[tid].append(vec)
             self._cnts[tid] += 1
 
             # 버퍼가 충분히 쌓이고 stride 조건을 만족하면 추론
             if (len(self._bufs[tid]) == self.seq_len
-                    and self._cnts[tid] % self.stride == 0):
+                    and self._cnts[tid] % self.stride == 0
+                    and sum(bool(item.any()) for item in self._bufs[tid]) >= self.seq_len * 0.5):
                 probs = self._infer(self._bufs[tid])
+                self.inference_count += 1
                 # 시간 EMA 스무딩 — 단발성 오탐·라벨 깜빡임 억제
                 prev = self._probs.get(tid)
                 if prev is not None:
@@ -191,15 +206,41 @@ class TrackBehaviorBuffer:
                     cls, conf = 0, float(probs[0])
                 self._results[tid] = (cls, conf)
 
-        # 사라진 트랙 정리
+        # 짧은 누락은 학습 추출기와 같은 0 벡터로 표시하고 수집 기록을 보존한다.
+        # 실제로 관찰하지 못한 시점에는 새 행동 판정이나 사건을 생성하지 않는다.
         for tid in list(self._bufs):
-            if tid not in active_ids:
-                self._bufs.pop(tid)
-                self._cnts.pop(tid)
-                self._probs.pop(tid, None)
-                self._results.pop(tid, None)
+            if tid not in observed_ids:
+                self._missing[tid] = self._missing.get(tid, 0) + 1
+                if self._missing[tid] > self.max_missing:
+                    self._forget(tid)
+                else:
+                    self._bufs[tid].append(np.zeros(34, dtype=np.float32))
+                    self._cnts[tid] += 1
 
-        return dict(self._results)
+        return {tid: value for tid, value in self._results.items()
+                if tid in observed_ids and sum(bool(item.any()) for item in self._bufs[tid]) >= self.seq_len * 0.5}
+
+    def _forget(self, tid):
+        self._bufs.pop(tid, None)
+        self._cnts.pop(tid, None)
+        self._probs.pop(tid, None)
+        self._results.pop(tid, None)
+        self._missing.pop(tid, None)
+        self.reset_count += 1
+
+    def progress(self, track_id):
+        """추론 조건을 바꾸지 않고 해당 인물의 관절 수집 진행도를 반환한다."""
+        buf = self._bufs.get(track_id, ())
+        missing = self._missing.get(track_id, 0)
+        valid = sum(bool(item.any()) for item in buf)
+        probs = self._probs.get(track_id)
+        candidate = None if probs is None else {"label": int(probs.argmax()), "score": float(probs.max())}
+        state = "tracking_gap" if missing else "collecting" if len(buf) < self.seq_len else (
+            "insufficient_keypoints" if valid < self.seq_len * 0.5 else "classified" if track_id in self._results else "collecting")
+        if state == "classified" and candidate["label"] != 0 and candidate["score"] < self.abn_conf_thr:
+            state = "uncertain"
+        return {"collected": len(buf), "required": self.seq_len,
+                "valid": valid, "missing_frames": missing, "state": state, "candidate": candidate}
 
     @torch.no_grad()
     def _infer(self, buf: deque) -> np.ndarray:

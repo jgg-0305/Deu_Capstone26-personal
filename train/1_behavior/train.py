@@ -58,9 +58,9 @@ class LSTM_NIA(nn.Module):
 
     def forward(self, x):
         batch_size, img_size = x.shape[0], x.shape[2:]
-        x = x.reshape(-1, *img_size)               # (B*seq, C, H, W)
-        x = self.backbone(x)                       # (B*seq, 2048, 1, 1)
-        x = x.reshape(batch_size, -1, self.input_size)  # (B, seq*4, 512)
+        x = x.reshape(-1, *img_size)               # 배치와 시퀀스를 합친 영상 텐서
+        x = self.backbone(x)                       # 프레임별 2048차원 특징
+        x = x.reshape(batch_size, -1, self.input_size)  # 배치별 시계열 특징
         out = self.lstm(x)
         return self.fc(out)
 

@@ -141,7 +141,7 @@ def evaluate_kpt(weights, npz_path):
         y_true.extend(label.tolist() if torch.is_tensor(label) else list(label))
     m = compute_metrics(y_true, y_pred)
 
-    sample = ds[0][0].unsqueeze(0)  # (1, T, 34)
+    sample = ds[0][0].unsqueeze(0)  # 배치 한 개의 프레임별 관절 특징
     gpu_ms = gpu_tp = None
     if torch.cuda.is_available():
         gpu_ms, gpu_tp = measure_latency(model, sample, "cuda")

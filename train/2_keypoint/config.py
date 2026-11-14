@@ -23,8 +23,8 @@ NUM_JOINTS = 17
 # ─── 입력 크기 ────────────────────────────────────────────────────────────────────
 IMAGE_W = 192          # crop 후 입력 너비
 IMAGE_H = 256          # crop 후 입력 높이
-HEATMAP_W = IMAGE_W // OUTPUT_STRIDE   # 24
-HEATMAP_H = IMAGE_H // OUTPUT_STRIDE   # 32
+HEATMAP_W = IMAGE_W // OUTPUT_STRIDE   # 이전 설정값: 24
+HEATMAP_H = IMAGE_H // OUTPUT_STRIDE   # 이전 설정값: 32
 SIGMA = 2              # Gaussian 히트맵 표준편차
 
 # ─── 학습 ─────────────────────────────────────────────────────────────────────────
@@ -34,7 +34,7 @@ BATCH_SIZE = 8
 NUM_WORKERS = 4
 LEARNING_RATE = 1e-4
 LR_END = 1e-5
-LR_STEP = [7, 10, 13]   # MultiStepLR
+LR_STEP = [7, 10, 13]   # 지정한 에포크마다 학습률을 낮춘다.
 
 # 데이터 증강
 FLIP = True
@@ -45,7 +45,7 @@ GPUS = [0]
 SAVE_INTERVAL = 5
 
 # ─── 관절 정의 (NIA 17관절 — read_data_from_nia.py 순서) ──────────────────────────
-# idx:  0         1          2          3        4          5
+# 클래스 인덱스: 0, 1, 2, 3, 4, 5
 JOINT_NAMES = [
     "Right foot", "Right knee", "Right hip", "Left hip", "Left knee", "Left foot",
     "Pelvis", "Spine naval", "Spine chest", "Neck base", "Center head",

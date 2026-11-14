@@ -1,15 +1,13 @@
 import time
 import os
-import threading
 import cv2
 import numpy as np
-import requests
-from datetime import datetime
 from PyQt5.QtCore import QThread, pyqtSignal
 from PyQt5.QtGui import QImage
 
 from core.detector import HumanDetector
 from core.tracker import HumanTracker
+from core.tracking_geometry import match_keypoints
 from core.labels import label_en
 
 _COLOR_PALETTE = [
@@ -34,45 +32,11 @@ _SKELETON = [
 
 _KPT_CONF_THRESHOLD = 0.3
 
-# FastAPI 서버 연동 상수
-_API_URL = "http://127.0.0.1:8000/api/alert"
-_ALERT_COOLDOWN_SEC = 10
-_EVENT_IMAGE_DIR = "event_captures"
-
 # 이상행동 녹화 트리거 최소 신뢰도 (스무딩된 행동 확률 기준)
 _RECORD_CONF_THR = 0.6
 
 def _track_color(track_id) -> tuple:
     return _COLOR_PALETTE[int(track_id) % len(_COLOR_PALETTE)]
-
-
-def _iou(a: list, b: list) -> float:
-    """두 bbox [x1,y1,x2,y2] 의 IoU."""
-    ix1 = max(a[0], b[0])
-    iy1 = max(a[1], b[1])
-    ix2 = min(a[2], b[2])
-    iy2 = min(a[3], b[3])
-    inter = max(0, ix2 - ix1) * max(0, iy2 - iy1)
-    if inter == 0:
-        return 0.0
-    area_a = (a[2] - a[0]) * (a[3] - a[1])
-    area_b = (b[2] - b[0]) * (b[3] - b[1])
-    return inter / (area_a + area_b - inter)
-
-
-def _match_keypoints(tracks: list, detections: list) -> dict:
-    """track_id → keypoints(np.ndarray|None) 매핑. IoU 최대 detection 선택."""
-    result = {}
-    for t in tracks:
-        best_iou, best_kpts = 0.0, None
-        for d in detections:
-            iou = _iou(t["bbox"], d["bbox"])
-            if iou > best_iou:
-                best_iou = iou
-                best_kpts = d.get("keypoints")
-        # IoU 0.1 미만이면 박스가 거의 겹치지 않으므로 잘못된 매핑으로 간주
-        result[t["track_id"]] = best_kpts if best_iou > 0.1 else None
-    return result
 
 
 def _summarize_behavior(behavior_map: dict) -> tuple:
@@ -84,7 +48,7 @@ def _summarize_behavior(behavior_map: dict) -> tuple:
     """
     if not behavior_map:
         return -1, 0.0
-    best_abn = None       # (conf, class_id)
+    best_abn = None       # 신뢰도와 클래스 번호
     best_normal_conf = 0.0
     for cid, conf in behavior_map.values():
         if cid != 0:
@@ -136,13 +100,6 @@ class VideoThread(QThread):
         self.show_stand = True         # 물품 가판대(class 0) 표시 여부
         self.show_pos = True           # 결제기(class 1) 표시 여부
         
-        # FastAPI 알림 연동: 쿨타임 관리 + 비동기 전송/서킷 브레이커
-        self.last_alert_time = 0
-        self._alert_enabled = True      # 연속 실패 시 자동 비활성화
-        self._alert_fail_count = 0
-
-        # 이벤트 이미지 저장 디렉토리 생성
-        os.makedirs(_EVENT_IMAGE_DIR, exist_ok=True)
 
     @property
     def _is_live(self) -> bool:
@@ -219,7 +176,7 @@ class VideoThread(QThread):
                     theft_monitor = TheftMonitor()
             cap = self._open_capture()
             if not cap.isOpened():
-                self.error_occurred.emit(f"영상 소스를 열 수 없습니다: {self.source}")
+                self.error_occurred.emit(f"영상 소스를 열 수 없습니다: {self.source_name or '영상'}")
                 return
 
             src_fps = cap.get(cv2.CAP_PROP_FPS)
@@ -277,7 +234,7 @@ class VideoThread(QThread):
                     _reconnect_count += 1
                     if _reconnect_count > _max_reconnects:
                         self.error_occurred.emit(
-                            f"RTSP 스트림 재연결 실패 ({_max_reconnects}회 시도): {self.source}"
+                            f"스트림 재연결 실패 ({_max_reconnects}회 시도): {self.source_name or '영상'}"
                         )
                         break
                     cap.release()
@@ -302,11 +259,11 @@ class VideoThread(QThread):
 
                     kpt_map = {}
                     if detector.is_pose:
-                        kpt_map = _match_keypoints(tracks, detections)
+                        kpt_map = match_keypoints(tracks, detections)
 
                     # 키포인트 행동 분류 (pose 모델 + kpt_model 지정 시)
                     behavior_map = {}
-                    if kpt_buf is not None and self.show_kpt_behavior:
+                    if kpt_buf is not None:
                         behavior_map = kpt_buf.update(tracks, kpt_map)
 
                     # 물품 가판대/결제기 감지 (모델 지정 시)
@@ -337,35 +294,6 @@ class VideoThread(QThread):
                 self.stats_updated.emit(len(tracks), fps)
                 cid, bconf = _summarize_behavior(behavior_map)
                 self.behavior_ready.emit(cid, bconf)
-                
-                # ===== FastAPI 알림 연동 (비동기 — 처리 루프를 막지 않음) =====
-                current_time = time.time()
-                anomaly_score = float(bconf)
-                if (self._alert_enabled and len(tracks) > 0 and cid != 0
-                        and anomaly_score >= 0.90
-                        and current_time - self.last_alert_time > _ALERT_COOLDOWN_SEC):
-                    self.last_alert_time = current_time
-
-                    # 1) 사진 저장 (로컬, 빠름)
-                    timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    img_name = f"evt_{timestamp_str}.jpg"
-                    img_path = os.path.join(_EVENT_IMAGE_DIR, img_name)
-                    cv2.imwrite(img_path, frame)
-
-                    # 2) JSON 페이로드
-                    anomaly_type = label_en(cid) if cid != -1 else "정상"
-                    payload = {
-                        "event_id": f"evt_{timestamp_str}",
-                        "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "anomaly_type": anomaly_type,
-                        "image_path": os.path.abspath(img_path),
-                        "anomaly_score": float(bconf),
-                    }
-
-                    # 3) POST 는 데몬 스레드로 비동기 전송 (네트워크 지연이 영상 처리를 막지 않음)
-                    threading.Thread(target=self._post_alert, args=(payload,),
-                                     daemon=True).start()
-                # ===== FastAPI 알림 연동 끝 =====
 
                 # ===== 이상행동 구간 녹화 =====
                 if recorder is not None:
@@ -385,8 +313,7 @@ class VideoThread(QThread):
                     time.sleep(target_interval - elapsed)
 
         except Exception:
-            import traceback
-            self.error_occurred.emit(traceback.format_exc())
+            self.error_occurred.emit(f"영상 처리 중 오류가 발생했습니다: {self.source_name or '영상'}")
         finally:
             if recorder is not None:
                 recorder.close()
@@ -419,7 +346,7 @@ class VideoThread(QThread):
                 parts = []
                 if self.show_track_id:
                     parts.append(f"ID:{tid}")
-                if beh is not None:
+                if beh is not None and self.show_kpt_behavior:
                     cid, bconf = beh
                     parts.append(f"{label_en(cid)} {bconf*100:.0f}%")
 
@@ -495,17 +422,6 @@ class VideoThread(QThread):
         h, w, ch = rgb.shape
         # .copy() 필수: 없으면 QImage가 numpy 버퍼 포인터를 보유한 채 GC 발생 → dangling pointer crash (exit code 5)
         return QImage(rgb.data, w, h, ch * w, QImage.Format_RGB888).copy()
-
-    def _post_alert(self, payload: dict):
-        """FastAPI 알림 POST (데몬 스레드에서 실행). 연속 실패 시 알림 비활성화."""
-        try:
-            requests.post(_API_URL, json=payload, timeout=2)
-            self._alert_fail_count = 0
-        except requests.exceptions.RequestException:
-            self._alert_fail_count += 1
-            if self._alert_fail_count >= 3:
-                self._alert_enabled = False
-                print("FastAPI 알림 서버에 연결할 수 없어 알림 전송을 비활성화합니다.")
 
     def set_conf(self, value: float):
         self.conf = value

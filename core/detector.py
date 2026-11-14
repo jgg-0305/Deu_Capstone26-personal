@@ -29,26 +29,28 @@ class HumanDetector:
 
     def detect(self, frame: np.ndarray) -> list[dict]:
         """
-        Returns list of dicts:
+        검출 결과 사전의 목록을 반환한다.
           { 'bbox': [x1,y1,x2,y2], 'conf': float, 'keypoints': np.ndarray | None }
-        keypoints shape: (17, 3) — (x, y, conf) per joint. None for non-pose models.
+        관절 좌표는 관절당 (x, y, 신뢰도)로 구성된다. 포즈 모델에서만 반환한다.
         """
         kwargs = dict(conf=self.conf_threshold, imgsz=self.imgsz,
-                      half=self.half, device=self.device, verbose=False)
+                      device=self.device, verbose=False)
+        if self.half:
+            kwargs["half"] = True
         if not self.is_pose:
             kwargs["classes"] = [0]  # 포즈 모델은 person 전용이라 classes 불필요
 
         results = self.model(frame, **kwargs)
         detections = []
         for r in results:
-            kpts_data = r.keypoints  # None if not pose model
+            kpts_data = r.keypoints  # 포즈 모델이 아니면 관절 좌표가 없다.
             for i, box in enumerate(r.boxes):
                 x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
                 conf = float(box.conf[0])
                 kpts = None
                 if kpts_data is not None and i < len(kpts_data):
                     # .data[0]: YOLO가 각 결과에 배치 차원을 감싸므로 [0]으로 벗겨냄
-                    kpts = kpts_data[i].data[0].cpu().numpy()  # (17, 3)
+                    kpts = kpts_data[i].data[0].cpu().numpy()  # 관절 17개의 좌표와 신뢰도
                 detections.append({
                     "bbox": [x1, y1, x2, y2],
                     "conf": conf,
@@ -69,15 +71,16 @@ class ObjectDetector:
         self.model = YOLO(model_path)
         self.conf_threshold = conf_threshold
         self.imgsz = int(imgsz)
-        self.names = self.model.names  # {0:'stand', 1:'pos', ...}
+        self.names = self.model.names  # 클래스 번호별 이름
         cuda = torch.cuda.is_available()
         self.device = 0 if cuda else "cpu"
         self.half = (cuda if half is None else (half and cuda))
 
     def detect(self, frame: np.ndarray) -> list[dict]:
-        """Returns list of { 'bbox':[x1,y1,x2,y2], 'conf':float, 'cls':int, 'name':str }."""
+        """반환 형식: { 'bbox':[x1,y1,x2,y2], 'conf':float, 'cls':int, 'name':str }."""
+        precision = {"half": True} if self.half else {}
         results = self.model(frame, conf=self.conf_threshold, imgsz=self.imgsz,
-                             half=self.half, device=self.device, verbose=False)
+                             device=self.device, verbose=False, **precision)
         out = []
         for r in results:
             for box in r.boxes:

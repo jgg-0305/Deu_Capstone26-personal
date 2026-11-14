@@ -17,8 +17,8 @@ class KptBehaviorDataset(Dataset):
 
     def __init__(self, npz_path: str, augment: bool = False):
         data = np.load(npz_path)
-        self.sequences = data["sequences"].astype(np.float32)  # (N, T, 34)
-        self.labels = data["labels"].astype(np.int64)          # (N,)
+        self.sequences = data["sequences"].astype(np.float32)  # 샘플 수 × 프레임 수 × 관절 특징 34개
+        self.labels = data["labels"].astype(np.int64)          # 샘플마다 하나의 행동 클래스
         self.augment = augment
         assert len(self.sequences) == len(self.labels)
 
@@ -26,7 +26,7 @@ class KptBehaviorDataset(Dataset):
         return len(self.sequences)
 
     def __getitem__(self, idx):
-        seq = self.sequences[idx].copy()  # (T, 34)
+        seq = self.sequences[idx].copy()  # 프레임 수 × 관절 특징 34개
 
         if self.augment:
             # 미검출 관절(0,0)은 모든 변환 후에도 0으로 유지해야 한다
@@ -35,6 +35,7 @@ class KptBehaviorDataset(Dataset):
             # 좌우 반전: 홀수 인덱스(x) 를 1에서 뺌, 짝수(y) 는 그대로
             if np.random.rand() < 0.5:
                 seq[:, 0::2] = 1.0 - seq[:, 0::2]
+                seq *= nz  # 반전 후에도 미검출 좌표는 0으로 유지한다.
                 # 좌우 대칭 관절 쌍 교환 (COCO 기준)
                 # 0↔0(코), 1↔2(눈), 3↔4(귀), 5↔6(어깨), 7↔8(팔꿈치),
                 # 9↔10(손목), 11↔12(골반), 13↔14(무릎), 15↔16(발목)

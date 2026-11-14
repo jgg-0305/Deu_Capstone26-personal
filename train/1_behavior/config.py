@@ -30,10 +30,10 @@ END_EPOCH = 50
 BATCH_SIZE = 4
 NUM_WORKERS = 0
 LEARNING_RATE = 1e-3
-LR_MIN_RATIO = 0.1          # CosineAnnealingLR eta_min = LR * LR_MIN_RATIO
+LR_MIN_RATIO = 0.1          # 코사인 스케줄러의 최소 학습률은 초기 학습률에 최소 비율을 곱해 구한다.
 USE_CLASS_WEIGHT = True     # 클래스 불균형 보정용 가중 CrossEntropyLoss
 
-# ─── GPU ─────────────────────────────────────────────────────────────────────────
+# 그래픽 처리 장치 설정
 # DataParallel 사용할 GPU 인덱스 목록. 단일 GPU면 [0]
 GPUS = [0]
 
