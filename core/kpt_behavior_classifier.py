@@ -11,9 +11,12 @@ YOLO pose 가 추출한 17관절 좌표 시퀀스를 입력으로 받아
 
 학습된 가중치 포맷: plain state_dict() (module. 접두사 없음)
     torch.save(model.state_dict(), 'kpt_behavior.pth')
+새 가중치는 state_dict와 input_config를 함께 저장할 수 있다.
+sample_fps가 있으면 웹의 영상 타임스탬프로 학습 시점의 관절 간격을 유지한다.
 """
 
 from collections import deque, OrderedDict
+import math
 
 import numpy as np
 import torch
@@ -132,6 +135,11 @@ class TrackBehaviorBuffer:
 
         self.model = self._build_and_load(model_path)
         self.model.to(self.device).eval()
+        # New checkpoints declare their temporal input contract. Legacy plain
+        # state_dict files retain the original per-call behavior.
+        self.input_config = getattr(self.model, "behavior_input_config", {})
+        self.sample_fps = self.input_config.get("sample_fps")
+        self._sample_index = None
 
         # 트랙별 34차원 관절 특징 버퍼
         self._bufs: dict[int, deque] = {}
@@ -163,10 +171,43 @@ class TrackBehaviorBuffer:
         # 체크포인트 구조로 모델 버전 자동 감지 (v2는 attn 레이어 보유)
         model = KeypointLSTMv2() if "attn.weight" in state else KeypointLSTM()
         model.load_state_dict(state)
+        config = ckpt.get("input_config", {}) if "state_dict" in ckpt else {}
+        if config:
+            expected_labels = ["normal", "fall", "vandalism", "arson", "smoking", "abandon", "theft", "assault"]
+            if config.get("labels") != expected_labels or config.get("sequence_length") != 30:
+                raise ValueError("행동 모델의 클래스 순서 또는 시퀀스 길이가 앱과 다릅니다.")
+            fps = config.get("sample_fps")
+            if not isinstance(fps, (int, float)) or not math.isfinite(fps) or fps <= 0:
+                raise ValueError("행동 모델의 학습 FPS가 올바르지 않습니다.")
+        model.behavior_input_config = config
         return model
 
-    def update(self, tracks: list, kpt_map: dict) -> dict:
+    def update(self, tracks: list, kpt_map: dict, source_seconds=None) -> dict:
         """tracks, kpt_map 을 받아 결과 딕셔너리를 반환·갱신한다."""
+        if self.sample_fps is not None and source_seconds is not None:
+            if not math.isfinite(source_seconds) or source_seconds < 0:
+                raise ValueError("영상 시간은 유효한 0 이상의 초 단위 값이어야 합니다.")
+            index = math.floor(source_seconds * self.sample_fps + 1e-6)
+            if self._sample_index is not None:
+                if index < self._sample_index:
+                    # Seeking backwards starts a fresh temporal sequence.
+                    for tid in list(self._bufs):
+                        self._forget(tid)
+                elif index == self._sample_index:
+                    visible = {t["track_id"] for t in tracks if t.get("observed", True)
+                               and _encode(kpt_map.get(t["track_id"]), t["bbox"]).any()}
+                    return {tid: value for tid, value in self._results.items() if tid in visible
+                            and sum(bool(item.any()) for item in self._bufs[tid]) >= self.seq_len * .5}
+                else:
+                    # Missing source-time slots must not compress a long gap
+                    # into apparently adjacent motions.
+                    gap = min(index - self._sample_index - 1, self.max_missing + 1)
+                    for _ in range(gap):
+                        self._advance([], {})
+            self._sample_index = index
+        return self._advance(tracks, kpt_map)
+
+    def _advance(self, tracks: list, kpt_map: dict) -> dict:
         observed_ids = set()
         for t in tracks:
             tid = t["track_id"]

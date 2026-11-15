@@ -324,6 +324,7 @@ def analyze(api, camera_id, threshold, job=None):
                 "buffers": {t["track_id"]: behavior.progress(t["track_id"]) for t in tracks} if behavior else {},
                 "scene_buffer": {"collected": len(rgb.features), "required": 3} if rgb else None,
                 "behavior_threshold": threshold, "event_threshold": settings["event_threshold"],
+                "behavior_sample_fps": behavior.sample_fps if behavior else None,
             }
         previous = set()
         last_heartbeat = started = time.monotonic()
@@ -347,7 +348,7 @@ def analyze(api, camera_id, threshold, job=None):
                     if rgb:
                         scene = rgb.update(frame)
                     else:
-                        predictions = behavior.update(tracks, keypoints)
+                        predictions = behavior.update(tracks, keypoints, source_seconds=pts / 1000)
                     observed_tracks = [t for t in tracks if t.get("observed", True)]
                     suspects = rule.update(observed_tracks, keypoints, objects, source_seconds=pts / 1000, include_lost=True)
                 present = {track["track_id"] for track in tracks if track.get("observed", True)}

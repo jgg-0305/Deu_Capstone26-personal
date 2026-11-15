@@ -1,0 +1,396 @@
+{
+  "device": "NVIDIA GeForce RTX 3070",
+  "torch": "2.11.0+cu128",
+  "model": "KeypointLSTM v2",
+  "initialization": "random",
+  "seed": 42,
+  "dataset": {
+    "labels": [
+      "normal",
+      "fall",
+      "vandalism",
+      "arson",
+      "smoking",
+      "abandon",
+      "theft",
+      "assault"
+    ],
+    "fps": 3.0,
+    "pose": "yolo11n-pose.pt",
+    "pose_sha256": "869e83fcdffdc7371fa4e34cd8e51c838cc729571d1635e5141e3075e9319dc0",
+    "resolution": 480,
+    "confidence": 0.4,
+    "sequence_length": 30,
+    "stride": 5,
+    "max_gap": 3,
+    "normal_margin_frames": 6,
+    "device": "0",
+    "dependencies": {
+      "torch": "2.11.0+cu128",
+      "torchvision": "0.26.0+cu128",
+      "opencv-python": "5.0.0.93",
+      "ultralytics": "8.4.212",
+      "deep-sort-realtime": "1.3.2"
+    },
+    "clip_cap_per_class": null,
+    "preprocessing_sha256": "6709226e56ef0f973daa369b6ba8b728f597ce74e3b80d952900a114505b9efe",
+    "counts": {
+      "train": {
+        "windows": {
+          "normal": 19734,
+          "fall": 2433,
+          "vandalism": 6744,
+          "arson": 2896,
+          "smoking": 9950,
+          "abandon": 3072,
+          "theft": 7271,
+          "assault": 5499
+        },
+        "positive_clips": {
+          "fall": 356,
+          "vandalism": 483,
+          "arson": 487,
+          "smoking": 540,
+          "abandon": 475,
+          "theft": 525,
+          "assault": 414
+        }
+      },
+      "val": {
+        "windows": {
+          "normal": 3414,
+          "fall": 495,
+          "vandalism": 1167,
+          "arson": 524,
+          "smoking": 1816,
+          "abandon": 575,
+          "theft": 1073,
+          "assault": 1022
+        },
+        "positive_clips": {
+          "fall": 63,
+          "vandalism": 78,
+          "arson": 84,
+          "smoking": 91,
+          "abandon": 91,
+          "theft": 87,
+          "assault": 75
+        }
+      },
+      "test": {
+        "windows": {
+          "fall": 268,
+          "normal": 3109,
+          "vandalism": 833,
+          "arson": 520,
+          "smoking": 1318,
+          "abandon": 394,
+          "theft": 663,
+          "assault": 900
+        },
+        "positive_clips": {
+          "fall": 43,
+          "vandalism": 66,
+          "arson": 76,
+          "smoking": 78,
+          "abandon": 70,
+          "theft": 54,
+          "assault": 67
+        }
+      },
+      "diagnostic": {
+        "windows": {
+          "normal": 104,
+          "theft": 227
+        },
+        "positive_clips": {
+          "theft": 18
+        }
+      }
+    },
+    "normal_labels": "pre-event proxies",
+    "group_strategy": "scenario, filming location, date"
+  },
+  "best_epoch": 14,
+  "test_loss": 0.7051133812851343,
+  "labels": [
+    "normal",
+    "fall",
+    "vandalism",
+    "arson",
+    "smoking",
+    "abandon",
+    "theft",
+    "assault"
+  ],
+  "metrics": {
+    "accuracy": 0.7818863210493442,
+    "macro_f1": 0.7598175024512246,
+    "confusion_matrix": [
+      [
+        2448,
+        8,
+        70,
+        155,
+        213,
+        78,
+        89,
+        48
+      ],
+      [
+        1,
+        266,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        26,
+        14,
+        630,
+        0,
+        1,
+        17,
+        33,
+        112
+      ],
+      [
+        62,
+        2,
+        1,
+        423,
+        23,
+        2,
+        7,
+        0
+      ],
+      [
+        84,
+        4,
+        3,
+        0,
+        1219,
+        0,
+        5,
+        3
+      ],
+      [
+        67,
+        12,
+        24,
+        10,
+        3,
+        250,
+        21,
+        7
+      ],
+      [
+        59,
+        2,
+        141,
+        2,
+        8,
+        10,
+        403,
+        38
+      ],
+      [
+        62,
+        2,
+        180,
+        0,
+        3,
+        3,
+        30,
+        620
+      ]
+    ],
+    "per_class": {
+      "normal": {
+        "support": 3109,
+        "precision": 0.8714845140619437,
+        "recall": 0.7873914441942746,
+        "f1": 0.8273065224738088
+      },
+      "fall": {
+        "support": 268,
+        "precision": 0.8580645161290322,
+        "recall": 0.9925373134328358,
+        "f1": 0.9204152249134948
+      },
+      "vandalism": {
+        "support": 833,
+        "precision": 0.6005719733079123,
+        "recall": 0.7563025210084033,
+        "f1": 0.6695005313496281
+      },
+      "arson": {
+        "support": 520,
+        "precision": 0.7169491525423729,
+        "recall": 0.8134615384615385,
+        "f1": 0.7621621621621621
+      },
+      "smoking": {
+        "support": 1318,
+        "precision": 0.8286879673691366,
+        "recall": 0.924886191198786,
+        "f1": 0.8741484403011832
+      },
+      "abandon": {
+        "support": 394,
+        "precision": 0.6944444444444444,
+        "recall": 0.6345177664974619,
+        "f1": 0.6631299734748011
+      },
+      "theft": {
+        "support": 663,
+        "precision": 0.685374149659864,
+        "recall": 0.6078431372549019,
+        "f1": 0.6442845723421263
+      },
+      "assault": {
+        "support": 900,
+        "precision": 0.748792270531401,
+        "recall": 0.6888888888888889,
+        "f1": 0.7175925925925926
+      }
+    }
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 1.407410501918436,
+      "val_loss": 1.2860647455321732,
+      "val_macro_f1": 0.5431008282458586
+    },
+    {
+      "epoch": 2,
+      "train_loss": 1.0226759036615218,
+      "val_loss": 1.1507631052634841,
+      "val_macro_f1": 0.6146646827963194
+    },
+    {
+      "epoch": 3,
+      "train_loss": 0.8377722486501502,
+      "val_loss": 0.9700586673359112,
+      "val_macro_f1": 0.657380706280755
+    },
+    {
+      "epoch": 4,
+      "train_loss": 0.7237080396361047,
+      "val_loss": 0.9228540799127504,
+      "val_macro_f1": 0.678560216684123
+    },
+    {
+      "epoch": 5,
+      "train_loss": 0.6528841917828434,
+      "val_loss": 0.9007918618629784,
+      "val_macro_f1": 0.6964370855510409
+    },
+    {
+      "epoch": 6,
+      "train_loss": 0.5856464250681436,
+      "val_loss": 0.7896352598124876,
+      "val_macro_f1": 0.7348263831136995
+    },
+    {
+      "epoch": 7,
+      "train_loss": 0.5446625389004149,
+      "val_loss": 0.7231861653839481,
+      "val_macro_f1": 0.7533313792422504
+    },
+    {
+      "epoch": 8,
+      "train_loss": 0.4866883743098839,
+      "val_loss": 0.6897850846005602,
+      "val_macro_f1": 0.7649379352130057
+    },
+    {
+      "epoch": 9,
+      "train_loss": 0.4538401749053803,
+      "val_loss": 0.6777715068380676,
+      "val_macro_f1": 0.7683076047869631
+    },
+    {
+      "epoch": 10,
+      "train_loss": 0.41861617470572404,
+      "val_loss": 0.7208852017183472,
+      "val_macro_f1": 0.7612698436285315
+    },
+    {
+      "epoch": 11,
+      "train_loss": 0.392575005371187,
+      "val_loss": 0.7151868927225857,
+      "val_macro_f1": 0.7669226431528765
+    },
+    {
+      "epoch": 12,
+      "train_loss": 0.3597757027574263,
+      "val_loss": 0.7044774800001239,
+      "val_macro_f1": 0.7735715498284164
+    },
+    {
+      "epoch": 13,
+      "train_loss": 0.33714421989748083,
+      "val_loss": 0.6511607112426879,
+      "val_macro_f1": 0.7864051491817654
+    },
+    {
+      "epoch": 14,
+      "train_loss": 0.31992159694612754,
+      "val_loss": 0.6286953198585911,
+      "val_macro_f1": 0.8021911641062045
+    },
+    {
+      "epoch": 15,
+      "train_loss": 0.2942731617519401,
+      "val_loss": 0.7270620611955929,
+      "val_macro_f1": 0.7708987562067291
+    },
+    {
+      "epoch": 16,
+      "train_loss": 0.27953106756953244,
+      "val_loss": 0.6378330440245141,
+      "val_macro_f1": 0.7937745472494605
+    },
+    {
+      "epoch": 17,
+      "train_loss": 0.26408976962490666,
+      "val_loss": 0.684433258740457,
+      "val_macro_f1": 0.7927342949123624
+    },
+    {
+      "epoch": 18,
+      "train_loss": 0.2454959341742044,
+      "val_loss": 0.7585460353460242,
+      "val_macro_f1": 0.7738416197965958
+    },
+    {
+      "epoch": 19,
+      "train_loss": 0.2282269745622754,
+      "val_loss": 0.6863068915916865,
+      "val_macro_f1": 0.8017213056251148
+    },
+    {
+      "epoch": 20,
+      "train_loss": 0.2183861224261706,
+      "val_loss": 0.6802990376511997,
+      "val_macro_f1": 0.794323924190252
+    },
+    {
+      "epoch": 21,
+      "train_loss": 0.20672447519705203,
+      "val_loss": 0.6824753409738746,
+      "val_macro_f1": 0.799911203319602
+    },
+    {
+      "epoch": 22,
+      "train_loss": 0.19508057933405962,
+      "val_loss": 0.7182578458073071,
+      "val_macro_f1": 0.7996424426758115
+    }
+  ]
+}

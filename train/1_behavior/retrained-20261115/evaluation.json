@@ -1,0 +1,2279 @@
+{
+  "checkpoint_sha256": {
+    "old_v1": "18ca0e846519b1db10b1846e531329ff7bd1ce22b674527e618f194e145d5d85",
+    "old_v2": "f9412d9d09ffe6be0132bb310725e18aa49fa06bbb79e475b5d08a76e991c41a",
+    "previous_retrained": "2305331c7c4cdf659238df7cef6d8fe0a0bd9b0b9c291c1e85c0c64b3283a5ef",
+    "repaired": "c296d4da35da66ccce238a2f2fdefa19945e1d069efbf0e0f94847ed07af5ab5"
+  },
+  "labels": [
+    "normal",
+    "fall",
+    "vandalism",
+    "arson",
+    "smoking",
+    "abandon",
+    "theft",
+    "assault"
+  ],
+  "note": "Test clips were not used for model selection; diagnostic clip was previously examined.",
+  "test": {
+    "windows": 8005,
+    "clips": 455,
+    "groups": 144,
+    "models": {
+      "old_v1": {
+        "accuracy": 0.47033104309806373,
+        "macro_f1": 0.47648068851358133,
+        "confusion_matrix": [
+          [
+            42,
+            489,
+            252,
+            806,
+            469,
+            256,
+            348,
+            447
+          ],
+          [
+            18,
+            193,
+            0,
+            21,
+            0,
+            8,
+            12,
+            16
+          ],
+          [
+            2,
+            30,
+            623,
+            5,
+            3,
+            2,
+            71,
+            97
+          ],
+          [
+            3,
+            0,
+            0,
+            461,
+            21,
+            7,
+            7,
+            21
+          ],
+          [
+            7,
+            13,
+            3,
+            7,
+            1248,
+            0,
+            18,
+            22
+          ],
+          [
+            3,
+            49,
+            11,
+            72,
+            0,
+            199,
+            33,
+            27
+          ],
+          [
+            6,
+            35,
+            35,
+            16,
+            23,
+            4,
+            504,
+            40
+          ],
+          [
+            0,
+            38,
+            42,
+            75,
+            147,
+            6,
+            97,
+            495
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 3109,
+            "precision": 0.5185185185185185,
+            "recall": 0.013509166934705693,
+            "f1": 0.026332288401253918,
+            "false_positives": 39,
+            "false_negatives": 3067,
+            "false_positive_rate": 0.007965686274509803,
+            "false_negative_rate": 0.9864908330652943
+          },
+          "fall": {
+            "support": 268,
+            "precision": 0.22786304604486424,
+            "recall": 0.7201492537313433,
+            "f1": 0.34618834080717487,
+            "false_positives": 654,
+            "false_negatives": 75,
+            "false_positive_rate": 0.08452888716556806,
+            "false_negative_rate": 0.2798507462686567
+          },
+          "vandalism": {
+            "support": 833,
+            "precision": 0.644927536231884,
+            "recall": 0.7478991596638656,
+            "f1": 0.6926070038910506,
+            "false_positives": 343,
+            "false_negatives": 210,
+            "false_positive_rate": 0.04782487451199108,
+            "false_negative_rate": 0.25210084033613445
+          },
+          "arson": {
+            "support": 520,
+            "precision": 0.31510594668489406,
+            "recall": 0.8865384615384615,
+            "f1": 0.464952092788704,
+            "false_positives": 1002,
+            "false_negatives": 59,
+            "false_positive_rate": 0.13386773547094188,
+            "false_negative_rate": 0.11346153846153846
+          },
+          "smoking": {
+            "support": 1318,
+            "precision": 0.6530612244897959,
+            "recall": 0.9468892261001517,
+            "f1": 0.77299473521214,
+            "false_positives": 663,
+            "false_negatives": 70,
+            "false_positive_rate": 0.09914759982054733,
+            "false_negative_rate": 0.05311077389984825
+          },
+          "abandon": {
+            "support": 394,
+            "precision": 0.41286307053941906,
+            "recall": 0.5050761421319797,
+            "f1": 0.454337899543379,
+            "false_positives": 283,
+            "false_negatives": 195,
+            "false_positive_rate": 0.037183024569701746,
+            "false_negative_rate": 0.4949238578680203
+          },
+          "theft": {
+            "support": 663,
+            "precision": 0.46238532110091746,
+            "recall": 0.7601809954751131,
+            "f1": 0.5750142612664004,
+            "false_positives": 586,
+            "false_negatives": 159,
+            "false_positive_rate": 0.07981476436938165,
+            "false_negative_rate": 0.2398190045248869
+          },
+          "assault": {
+            "support": 900,
+            "precision": 0.4248927038626609,
+            "recall": 0.55,
+            "f1": 0.4794188861985472,
+            "false_positives": 670,
+            "false_negatives": 405,
+            "false_positive_rate": 0.09429978888106967,
+            "false_negative_rate": 0.45
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.09914759982054733,
+        "normal_to_anomaly_rate": 0.9864908330652943,
+        "anomaly_to_normal_rate": 0.007965686274509803
+      },
+      "old_v2": {
+        "accuracy": 0.4141161773891318,
+        "macro_f1": 0.42045120453045853,
+        "confusion_matrix": [
+          [
+            77,
+            379,
+            258,
+            671,
+            951,
+            302,
+            228,
+            243
+          ],
+          [
+            59,
+            127,
+            18,
+            44,
+            1,
+            12,
+            1,
+            6
+          ],
+          [
+            59,
+            51,
+            489,
+            10,
+            67,
+            22,
+            40,
+            95
+          ],
+          [
+            6,
+            1,
+            0,
+            446,
+            49,
+            9,
+            9,
+            0
+          ],
+          [
+            14,
+            8,
+            1,
+            2,
+            1288,
+            1,
+            3,
+            1
+          ],
+          [
+            7,
+            22,
+            7,
+            55,
+            19,
+            269,
+            9,
+            6
+          ],
+          [
+            48,
+            15,
+            45,
+            38,
+            202,
+            14,
+            281,
+            20
+          ],
+          [
+            19,
+            34,
+            47,
+            110,
+            274,
+            6,
+            72,
+            338
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 3109,
+            "precision": 0.2664359861591695,
+            "recall": 0.024766806046960438,
+            "f1": 0.04532077692760447,
+            "false_positives": 212,
+            "false_negatives": 3032,
+            "false_positive_rate": 0.04330065359477124,
+            "false_negative_rate": 0.9752331939530395
+          },
+          "fall": {
+            "support": 268,
+            "precision": 0.19937205651491366,
+            "recall": 0.47388059701492535,
+            "f1": 0.28066298342541435,
+            "false_positives": 510,
+            "false_negatives": 141,
+            "false_positive_rate": 0.06591702210158977,
+            "false_negative_rate": 0.5261194029850746
+          },
+          "vandalism": {
+            "support": 833,
+            "precision": 0.5653179190751445,
+            "recall": 0.5870348139255702,
+            "f1": 0.5759717314487632,
+            "false_positives": 376,
+            "false_negatives": 344,
+            "false_positive_rate": 0.05242610150585611,
+            "false_negative_rate": 0.4129651860744298
+          },
+          "arson": {
+            "support": 520,
+            "precision": 0.3241279069767442,
+            "recall": 0.8576923076923076,
+            "f1": 0.4704641350210971,
+            "false_positives": 930,
+            "false_negatives": 74,
+            "false_positive_rate": 0.12424849699398798,
+            "false_negative_rate": 0.1423076923076923
+          },
+          "smoking": {
+            "support": 1318,
+            "precision": 0.45177130831287265,
+            "recall": 0.9772382397572079,
+            "f1": 0.6178939793715519,
+            "false_positives": 1563,
+            "false_negatives": 30,
+            "false_positive_rate": 0.23373710183938987,
+            "false_negative_rate": 0.02276176024279211
+          },
+          "abandon": {
+            "support": 394,
+            "precision": 0.42362204724409447,
+            "recall": 0.682741116751269,
+            "f1": 0.5228377065111759,
+            "false_positives": 366,
+            "false_negatives": 125,
+            "false_positive_rate": 0.04808829325975562,
+            "false_negative_rate": 0.31725888324873097
+          },
+          "theft": {
+            "support": 663,
+            "precision": 0.4370139968895801,
+            "recall": 0.4238310708898944,
+            "f1": 0.43032159264931086,
+            "false_positives": 362,
+            "false_negatives": 382,
+            "false_positive_rate": 0.04930536638518115,
+            "false_negative_rate": 0.5761689291101055
+          },
+          "assault": {
+            "support": 900,
+            "precision": 0.4767277856135402,
+            "recall": 0.37555555555555553,
+            "f1": 0.42013673088875075,
+            "false_positives": 371,
+            "false_negatives": 562,
+            "false_positive_rate": 0.052216748768472904,
+            "false_negative_rate": 0.6244444444444445
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.23373710183938987,
+        "normal_to_anomaly_rate": 0.9752331939530395,
+        "anomaly_to_normal_rate": 0.04330065359477124
+      },
+      "previous_retrained": {
+        "accuracy": 0.7818863210493442,
+        "macro_f1": 0.7598175024512246,
+        "confusion_matrix": [
+          [
+            2448,
+            8,
+            70,
+            155,
+            213,
+            78,
+            89,
+            48
+          ],
+          [
+            1,
+            266,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            26,
+            14,
+            630,
+            0,
+            1,
+            17,
+            33,
+            112
+          ],
+          [
+            62,
+            2,
+            1,
+            423,
+            23,
+            2,
+            7,
+            0
+          ],
+          [
+            84,
+            4,
+            3,
+            0,
+            1219,
+            0,
+            5,
+            3
+          ],
+          [
+            67,
+            12,
+            24,
+            10,
+            3,
+            250,
+            21,
+            7
+          ],
+          [
+            59,
+            2,
+            141,
+            2,
+            8,
+            10,
+            403,
+            38
+          ],
+          [
+            62,
+            2,
+            180,
+            0,
+            3,
+            3,
+            30,
+            620
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 3109,
+            "precision": 0.8714845140619437,
+            "recall": 0.7873914441942746,
+            "f1": 0.8273065224738088,
+            "false_positives": 361,
+            "false_negatives": 661,
+            "false_positive_rate": 0.07373366013071896,
+            "false_negative_rate": 0.21260855580572532
+          },
+          "fall": {
+            "support": 268,
+            "precision": 0.8580645161290322,
+            "recall": 0.9925373134328358,
+            "f1": 0.9204152249134948,
+            "false_positives": 44,
+            "false_negatives": 2,
+            "false_positive_rate": 0.005686958769548921,
+            "false_negative_rate": 0.007462686567164179
+          },
+          "vandalism": {
+            "support": 833,
+            "precision": 0.6005719733079123,
+            "recall": 0.7563025210084033,
+            "f1": 0.6695005313496281,
+            "false_positives": 419,
+            "false_negatives": 203,
+            "false_positive_rate": 0.05842163970998327,
+            "false_negative_rate": 0.24369747899159663
+          },
+          "arson": {
+            "support": 520,
+            "precision": 0.7169491525423729,
+            "recall": 0.8134615384615385,
+            "f1": 0.7621621621621621,
+            "false_positives": 167,
+            "false_negatives": 97,
+            "false_positive_rate": 0.02231128924515698,
+            "false_negative_rate": 0.18653846153846154
+          },
+          "smoking": {
+            "support": 1318,
+            "precision": 0.8286879673691366,
+            "recall": 0.924886191198786,
+            "f1": 0.8741484403011832,
+            "false_positives": 252,
+            "false_negatives": 99,
+            "false_positive_rate": 0.03768506056527591,
+            "false_negative_rate": 0.07511380880121396
+          },
+          "abandon": {
+            "support": 394,
+            "precision": 0.6944444444444444,
+            "recall": 0.6345177664974619,
+            "f1": 0.6631299734748011,
+            "false_positives": 110,
+            "false_negatives": 144,
+            "false_positive_rate": 0.014452765733806333,
+            "false_negative_rate": 0.36548223350253806
+          },
+          "theft": {
+            "support": 663,
+            "precision": 0.685374149659864,
+            "recall": 0.6078431372549019,
+            "f1": 0.6442845723421263,
+            "false_positives": 185,
+            "false_negatives": 260,
+            "false_positive_rate": 0.02519749387087987,
+            "false_negative_rate": 0.39215686274509803
+          },
+          "assault": {
+            "support": 900,
+            "precision": 0.748792270531401,
+            "recall": 0.6888888888888889,
+            "f1": 0.7175925925925926,
+            "false_positives": 208,
+            "false_negatives": 280,
+            "false_positive_rate": 0.02927515833919775,
+            "false_negative_rate": 0.3111111111111111
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.03768506056527591,
+        "normal_to_anomaly_rate": 0.21260855580572532,
+        "anomaly_to_normal_rate": 0.07373366013071896
+      },
+      "repaired": {
+        "accuracy": 0.830106183635228,
+        "macro_f1": 0.8162016583979644,
+        "confusion_matrix": [
+          [
+            2702,
+            0,
+            37,
+            132,
+            104,
+            56,
+            59,
+            19
+          ],
+          [
+            1,
+            266,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0
+          ],
+          [
+            15,
+            7,
+            673,
+            0,
+            0,
+            12,
+            16,
+            110
+          ],
+          [
+            86,
+            0,
+            0,
+            426,
+            3,
+            4,
+            1,
+            0
+          ],
+          [
+            124,
+            0,
+            3,
+            1,
+            1163,
+            9,
+            18,
+            0
+          ],
+          [
+            66,
+            4,
+            11,
+            11,
+            0,
+            292,
+            9,
+            1
+          ],
+          [
+            84,
+            2,
+            45,
+            0,
+            1,
+            8,
+            484,
+            39
+          ],
+          [
+            41,
+            0,
+            198,
+            0,
+            2,
+            4,
+            16,
+            639
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 3109,
+            "precision": 0.8663033023404938,
+            "recall": 0.8690897394660663,
+            "f1": 0.867694283879255,
+            "false_positives": 417,
+            "false_negatives": 407,
+            "false_positive_rate": 0.08517156862745098,
+            "false_negative_rate": 0.13091026053393373
+          },
+          "fall": {
+            "support": 268,
+            "precision": 0.953405017921147,
+            "recall": 0.9925373134328358,
+            "f1": 0.9725776965265083,
+            "false_positives": 13,
+            "false_negatives": 2,
+            "false_positive_rate": 0.0016802378182758176,
+            "false_negative_rate": 0.007462686567164179
+          },
+          "vandalism": {
+            "support": 833,
+            "precision": 0.6959669079627715,
+            "recall": 0.8079231692677071,
+            "f1": 0.7477777777777778,
+            "false_positives": 294,
+            "false_negatives": 160,
+            "false_positive_rate": 0.040992749581706636,
+            "false_negative_rate": 0.19207683073229292
+          },
+          "arson": {
+            "support": 520,
+            "precision": 0.7473684210526316,
+            "recall": 0.8192307692307692,
+            "f1": 0.781651376146789,
+            "false_positives": 144,
+            "false_negatives": 94,
+            "false_positive_rate": 0.019238476953907815,
+            "false_negative_rate": 0.18076923076923077
+          },
+          "smoking": {
+            "support": 1318,
+            "precision": 0.9128728414442701,
+            "recall": 0.8823975720789075,
+            "f1": 0.8973765432098766,
+            "false_positives": 111,
+            "false_negatives": 155,
+            "false_positive_rate": 0.016599371915657246,
+            "false_negative_rate": 0.11760242792109256
+          },
+          "abandon": {
+            "support": 394,
+            "precision": 0.7584415584415585,
+            "recall": 0.7411167512690355,
+            "f1": 0.7496790757381258,
+            "false_positives": 93,
+            "false_negatives": 102,
+            "false_positive_rate": 0.012219156484036263,
+            "false_negative_rate": 0.25888324873096447
+          },
+          "theft": {
+            "support": 663,
+            "precision": 0.802653399668325,
+            "recall": 0.7300150829562594,
+            "f1": 0.764612954186414,
+            "false_positives": 119,
+            "false_negatives": 179,
+            "false_positive_rate": 0.01620811767910651,
+            "false_negative_rate": 0.26998491704374056
+          },
+          "assault": {
+            "support": 900,
+            "precision": 0.7908415841584159,
+            "recall": 0.71,
+            "f1": 0.7482435597189696,
+            "false_positives": 169,
+            "false_negatives": 261,
+            "false_positive_rate": 0.02378606615059817,
+            "false_negative_rate": 0.29
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.016599371915657246,
+        "normal_to_anomaly_rate": 0.13091026053393373,
+        "anomaly_to_normal_rate": 0.08517156862745098
+      }
+    }
+  },
+  "diagnostic": {
+    "windows": 331,
+    "clips": 18,
+    "groups": 5,
+    "models": {
+      "old_v1": {
+        "accuracy": 0.44410876132930516,
+        "macro_f1": 0.3802875987601091,
+        "confusion_matrix": [
+          [
+            2,
+            27,
+            24,
+            2,
+            4,
+            8,
+            29,
+            8
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            1,
+            18,
+            34,
+            4,
+            3,
+            7,
+            145,
+            15
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 104,
+            "precision": 0.6666666666666666,
+            "recall": 0.019230769230769232,
+            "f1": 0.037383177570093455,
+            "false_positives": 1,
+            "false_negatives": 102,
+            "false_positive_rate": 0.004405286343612335,
+            "false_negative_rate": 0.9807692307692307
+          },
+          "fall": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 45,
+            "false_negatives": 0,
+            "false_positive_rate": 0.13595166163141995,
+            "false_negative_rate": null
+          },
+          "vandalism": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 58,
+            "false_negatives": 0,
+            "false_positive_rate": 0.17522658610271905,
+            "false_negative_rate": null
+          },
+          "arson": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 6,
+            "false_negatives": 0,
+            "false_positive_rate": 0.01812688821752266,
+            "false_negative_rate": null
+          },
+          "smoking": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 7,
+            "false_negatives": 0,
+            "false_positive_rate": 0.021148036253776436,
+            "false_negative_rate": null
+          },
+          "abandon": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 15,
+            "false_negatives": 0,
+            "false_positive_rate": 0.045317220543806644,
+            "false_negative_rate": null
+          },
+          "theft": {
+            "support": 227,
+            "precision": 0.8333333333333334,
+            "recall": 0.6387665198237885,
+            "f1": 0.7231920199501247,
+            "false_positives": 29,
+            "false_negatives": 82,
+            "false_positive_rate": 0.27884615384615385,
+            "false_negative_rate": 0.36123348017621143
+          },
+          "assault": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 23,
+            "false_negatives": 0,
+            "false_positive_rate": 0.06948640483383686,
+            "false_negative_rate": null
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.021148036253776436,
+        "normal_to_anomaly_rate": 0.9807692307692307,
+        "anomaly_to_normal_rate": 0.004405286343612335
+      },
+      "old_v2": {
+        "accuracy": 0.3323262839879154,
+        "macro_f1": 0.30100842657825666,
+        "confusion_matrix": [
+          [
+            2,
+            12,
+            5,
+            4,
+            12,
+            17,
+            46,
+            6
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            8,
+            12,
+            50,
+            11,
+            24,
+            8,
+            108,
+            6
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 104,
+            "precision": 0.2,
+            "recall": 0.019230769230769232,
+            "f1": 0.03508771929824561,
+            "false_positives": 8,
+            "false_negatives": 102,
+            "false_positive_rate": 0.03524229074889868,
+            "false_negative_rate": 0.9807692307692307
+          },
+          "fall": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 24,
+            "false_negatives": 0,
+            "false_positive_rate": 0.07250755287009064,
+            "false_negative_rate": null
+          },
+          "vandalism": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 55,
+            "false_negatives": 0,
+            "false_positive_rate": 0.1661631419939577,
+            "false_negative_rate": null
+          },
+          "arson": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 15,
+            "false_negatives": 0,
+            "false_positive_rate": 0.045317220543806644,
+            "false_negative_rate": null
+          },
+          "smoking": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 36,
+            "false_negatives": 0,
+            "false_positive_rate": 0.10876132930513595,
+            "false_negative_rate": null
+          },
+          "abandon": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 25,
+            "false_negatives": 0,
+            "false_positive_rate": 0.0755287009063444,
+            "false_negative_rate": null
+          },
+          "theft": {
+            "support": 227,
+            "precision": 0.7012987012987013,
+            "recall": 0.47577092511013214,
+            "f1": 0.5669291338582677,
+            "false_positives": 46,
+            "false_negatives": 119,
+            "false_positive_rate": 0.4423076923076923,
+            "false_negative_rate": 0.5242290748898678
+          },
+          "assault": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 12,
+            "false_negatives": 0,
+            "false_positive_rate": 0.03625377643504532,
+            "false_negative_rate": null
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.10876132930513595,
+        "normal_to_anomaly_rate": 0.9807692307692307,
+        "anomaly_to_normal_rate": 0.03524229074889868
+      },
+      "previous_retrained": {
+        "accuracy": 0.4743202416918429,
+        "macro_f1": 0.5937448149991704,
+        "confusion_matrix": [
+          [
+            90,
+            0,
+            6,
+            0,
+            1,
+            7,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            52,
+            0,
+            89,
+            0,
+            4,
+            12,
+            67,
+            3
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 104,
+            "precision": 0.6338028169014085,
+            "recall": 0.8653846153846154,
+            "f1": 0.7317073170731707,
+            "false_positives": 52,
+            "false_negatives": 14,
+            "false_positive_rate": 0.2290748898678414,
+            "false_negative_rate": 0.1346153846153846
+          },
+          "fall": {
+            "support": 0,
+            "precision": null,
+            "recall": null,
+            "f1": null,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "false_positive_rate": 0.0,
+            "false_negative_rate": null
+          },
+          "vandalism": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 95,
+            "false_negatives": 0,
+            "false_positive_rate": 0.28700906344410876,
+            "false_negative_rate": null
+          },
+          "arson": {
+            "support": 0,
+            "precision": null,
+            "recall": null,
+            "f1": null,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "false_positive_rate": 0.0,
+            "false_negative_rate": null
+          },
+          "smoking": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 5,
+            "false_negatives": 0,
+            "false_positive_rate": 0.015105740181268883,
+            "false_negative_rate": null
+          },
+          "abandon": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 19,
+            "false_negatives": 0,
+            "false_positive_rate": 0.05740181268882175,
+            "false_negative_rate": null
+          },
+          "theft": {
+            "support": 227,
+            "precision": 1.0,
+            "recall": 0.29515418502202645,
+            "f1": 0.4557823129251701,
+            "false_positives": 0,
+            "false_negatives": 160,
+            "false_positive_rate": 0.0,
+            "false_negative_rate": 0.7048458149779736
+          },
+          "assault": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 3,
+            "false_negatives": 0,
+            "false_positive_rate": 0.00906344410876133,
+            "false_negative_rate": null
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.015105740181268883,
+        "normal_to_anomaly_rate": 0.1346153846153846,
+        "anomaly_to_normal_rate": 0.2290748898678414
+      },
+      "repaired": {
+        "accuracy": 0.7039274924471299,
+        "macro_f1": 0.7797349709114415,
+        "confusion_matrix": [
+          [
+            96,
+            0,
+            5,
+            0,
+            0,
+            3,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            38,
+            0,
+            16,
+            0,
+            10,
+            26,
+            137,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 104,
+            "precision": 0.7164179104477612,
+            "recall": 0.9230769230769231,
+            "f1": 0.8067226890756303,
+            "false_positives": 38,
+            "false_negatives": 8,
+            "false_positive_rate": 0.16740088105726872,
+            "false_negative_rate": 0.07692307692307693
+          },
+          "fall": {
+            "support": 0,
+            "precision": null,
+            "recall": null,
+            "f1": null,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "false_positive_rate": 0.0,
+            "false_negative_rate": null
+          },
+          "vandalism": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 21,
+            "false_negatives": 0,
+            "false_positive_rate": 0.0634441087613293,
+            "false_negative_rate": null
+          },
+          "arson": {
+            "support": 0,
+            "precision": null,
+            "recall": null,
+            "f1": null,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "false_positive_rate": 0.0,
+            "false_negative_rate": null
+          },
+          "smoking": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 10,
+            "false_negatives": 0,
+            "false_positive_rate": 0.030211480362537766,
+            "false_negative_rate": null
+          },
+          "abandon": {
+            "support": 0,
+            "precision": 0.0,
+            "recall": null,
+            "f1": null,
+            "false_positives": 29,
+            "false_negatives": 0,
+            "false_positive_rate": 0.08761329305135952,
+            "false_negative_rate": null
+          },
+          "theft": {
+            "support": 227,
+            "precision": 1.0,
+            "recall": 0.6035242290748899,
+            "f1": 0.7527472527472527,
+            "false_positives": 0,
+            "false_negatives": 90,
+            "false_positive_rate": 0.0,
+            "false_negative_rate": 0.3964757709251101
+          },
+          "assault": {
+            "support": 0,
+            "precision": null,
+            "recall": null,
+            "f1": null,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "false_positive_rate": 0.0,
+            "false_negative_rate": null
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.030211480362537766,
+        "normal_to_anomaly_rate": 0.07692307692307693,
+        "anomaly_to_normal_rate": 0.16740088105726872
+      }
+    }
+  },
+  "s_pose_test": {
+    "attempted_clips": 112,
+    "windows": 1678,
+    "clips_with_windows": 94,
+    "groups": 111,
+    "models": {
+      "old_v1": {
+        "accuracy": 0.4237187127532777,
+        "macro_f1": 0.437646801070012,
+        "confusion_matrix": [
+          [
+            19,
+            101,
+            52,
+            145,
+            149,
+            42,
+            123,
+            51
+          ],
+          [
+            5,
+            37,
+            6,
+            10,
+            6,
+            0,
+            4,
+            4
+          ],
+          [
+            0,
+            3,
+            123,
+            0,
+            1,
+            0,
+            19,
+            3
+          ],
+          [
+            0,
+            17,
+            0,
+            85,
+            2,
+            6,
+            3,
+            7
+          ],
+          [
+            0,
+            1,
+            0,
+            0,
+            227,
+            0,
+            1,
+            0
+          ],
+          [
+            0,
+            9,
+            2,
+            11,
+            0,
+            66,
+            9,
+            4
+          ],
+          [
+            3,
+            6,
+            14,
+            3,
+            5,
+            1,
+            120,
+            6
+          ],
+          [
+            2,
+            18,
+            9,
+            10,
+            37,
+            2,
+            55,
+            34
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 682,
+            "precision": 0.6551724137931034,
+            "recall": 0.02785923753665689,
+            "f1": 0.053445850914205346,
+            "false_positives": 10,
+            "false_negatives": 663,
+            "false_positive_rate": 0.010040160642570281,
+            "false_negative_rate": 0.9721407624633431
+          },
+          "fall": {
+            "support": 72,
+            "precision": 0.19270833333333334,
+            "recall": 0.5138888888888888,
+            "f1": 0.2803030303030303,
+            "false_positives": 155,
+            "false_negatives": 35,
+            "false_positive_rate": 0.09651307596513076,
+            "false_negative_rate": 0.4861111111111111
+          },
+          "vandalism": {
+            "support": 149,
+            "precision": 0.5970873786407767,
+            "recall": 0.825503355704698,
+            "f1": 0.6929577464788732,
+            "false_positives": 83,
+            "false_negatives": 26,
+            "false_positive_rate": 0.05428384565075212,
+            "false_negative_rate": 0.174496644295302
+          },
+          "arson": {
+            "support": 120,
+            "precision": 0.32196969696969696,
+            "recall": 0.7083333333333334,
+            "f1": 0.4427083333333333,
+            "false_positives": 179,
+            "false_negatives": 35,
+            "false_positive_rate": 0.11489088575096278,
+            "false_negative_rate": 0.2916666666666667
+          },
+          "smoking": {
+            "support": 229,
+            "precision": 0.531615925058548,
+            "recall": 0.9912663755458515,
+            "f1": 0.6920731707317073,
+            "false_positives": 200,
+            "false_negatives": 2,
+            "false_positive_rate": 0.13802622498274672,
+            "false_negative_rate": 0.008733624454148471
+          },
+          "abandon": {
+            "support": 101,
+            "precision": 0.5641025641025641,
+            "recall": 0.6534653465346535,
+            "f1": 0.6055045871559633,
+            "false_positives": 51,
+            "false_negatives": 35,
+            "false_positive_rate": 0.032339885859226376,
+            "false_negative_rate": 0.3465346534653465
+          },
+          "theft": {
+            "support": 158,
+            "precision": 0.3592814371257485,
+            "recall": 0.759493670886076,
+            "f1": 0.4878048780487805,
+            "false_positives": 214,
+            "false_negatives": 38,
+            "false_positive_rate": 0.14078947368421052,
+            "false_negative_rate": 0.24050632911392406
+          },
+          "assault": {
+            "support": 167,
+            "precision": 0.3119266055045872,
+            "recall": 0.20359281437125748,
+            "f1": 0.2463768115942029,
+            "false_positives": 75,
+            "false_negatives": 133,
+            "false_positive_rate": 0.04963600264725347,
+            "false_negative_rate": 0.7964071856287425
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.13802622498274672,
+        "normal_to_anomaly_rate": 0.9721407624633431,
+        "anomaly_to_normal_rate": 0.010040160642570281
+      },
+      "old_v2": {
+        "accuracy": 0.35458879618593564,
+        "macro_f1": 0.365376027826312,
+        "confusion_matrix": [
+          [
+            19,
+            93,
+            69,
+            109,
+            250,
+            55,
+            64,
+            23
+          ],
+          [
+            18,
+            22,
+            9,
+            14,
+            7,
+            0,
+            2,
+            0
+          ],
+          [
+            19,
+            6,
+            96,
+            0,
+            11,
+            0,
+            10,
+            7
+          ],
+          [
+            10,
+            2,
+            3,
+            88,
+            14,
+            3,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0,
+            229,
+            0,
+            0,
+            0
+          ],
+          [
+            2,
+            4,
+            10,
+            8,
+            4,
+            69,
+            2,
+            2
+          ],
+          [
+            27,
+            3,
+            4,
+            2,
+            64,
+            1,
+            57,
+            0
+          ],
+          [
+            22,
+            22,
+            13,
+            11,
+            77,
+            4,
+            3,
+            15
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 682,
+            "precision": 0.1623931623931624,
+            "recall": 0.02785923753665689,
+            "f1": 0.04755944931163955,
+            "false_positives": 98,
+            "false_negatives": 663,
+            "false_positive_rate": 0.09839357429718876,
+            "false_negative_rate": 0.9721407624633431
+          },
+          "fall": {
+            "support": 72,
+            "precision": 0.14473684210526316,
+            "recall": 0.3055555555555556,
+            "f1": 0.19642857142857142,
+            "false_positives": 130,
+            "false_negatives": 50,
+            "false_positive_rate": 0.08094645080946451,
+            "false_negative_rate": 0.6944444444444444
+          },
+          "vandalism": {
+            "support": 149,
+            "precision": 0.47058823529411764,
+            "recall": 0.6442953020134228,
+            "f1": 0.5439093484419264,
+            "false_positives": 108,
+            "false_negatives": 53,
+            "false_positive_rate": 0.07063440156965337,
+            "false_negative_rate": 0.35570469798657717
+          },
+          "arson": {
+            "support": 120,
+            "precision": 0.3793103448275862,
+            "recall": 0.7333333333333333,
+            "f1": 0.5,
+            "false_positives": 144,
+            "false_negatives": 32,
+            "false_positive_rate": 0.09242618741976893,
+            "false_negative_rate": 0.26666666666666666
+          },
+          "smoking": {
+            "support": 229,
+            "precision": 0.3490853658536585,
+            "recall": 1.0,
+            "f1": 0.5175141242937853,
+            "false_positives": 427,
+            "false_negatives": 0,
+            "false_positive_rate": 0.2946859903381642,
+            "false_negative_rate": 0.0
+          },
+          "abandon": {
+            "support": 101,
+            "precision": 0.5227272727272727,
+            "recall": 0.6831683168316832,
+            "f1": 0.592274678111588,
+            "false_positives": 63,
+            "false_negatives": 32,
+            "false_positive_rate": 0.039949270767279645,
+            "false_negative_rate": 0.31683168316831684
+          },
+          "theft": {
+            "support": 158,
+            "precision": 0.41304347826086957,
+            "recall": 0.36075949367088606,
+            "f1": 0.38513513513513514,
+            "false_positives": 81,
+            "false_negatives": 101,
+            "false_positive_rate": 0.053289473684210525,
+            "false_negative_rate": 0.6392405063291139
+          },
+          "assault": {
+            "support": 167,
+            "precision": 0.3191489361702128,
+            "recall": 0.08982035928143713,
+            "f1": 0.14018691588785046,
+            "false_positives": 32,
+            "false_negatives": 152,
+            "false_positive_rate": 0.021178027796161483,
+            "false_negative_rate": 0.9101796407185628
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.2946859903381642,
+        "normal_to_anomaly_rate": 0.9721407624633431,
+        "anomaly_to_normal_rate": 0.09839357429718876
+      },
+      "previous_retrained": {
+        "accuracy": 0.7616209773539928,
+        "macro_f1": 0.7306758577171657,
+        "confusion_matrix": [
+          [
+            533,
+            4,
+            11,
+            11,
+            76,
+            11,
+            35,
+            1
+          ],
+          [
+            0,
+            68,
+            0,
+            4,
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            3,
+            0,
+            112,
+            0,
+            0,
+            11,
+            4,
+            19
+          ],
+          [
+            9,
+            12,
+            0,
+            92,
+            5,
+            0,
+            2,
+            0
+          ],
+          [
+            3,
+            0,
+            1,
+            0,
+            225,
+            0,
+            0,
+            0
+          ],
+          [
+            18,
+            1,
+            2,
+            3,
+            3,
+            67,
+            7,
+            0
+          ],
+          [
+            12,
+            0,
+            35,
+            1,
+            0,
+            4,
+            100,
+            6
+          ],
+          [
+            13,
+            0,
+            60,
+            0,
+            1,
+            4,
+            8,
+            81
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 682,
+            "precision": 0.9018612521150592,
+            "recall": 0.781524926686217,
+            "f1": 0.8373919874312648,
+            "false_positives": 58,
+            "false_negatives": 149,
+            "false_positive_rate": 0.05823293172690763,
+            "false_negative_rate": 0.218475073313783
+          },
+          "fall": {
+            "support": 72,
+            "precision": 0.8,
+            "recall": 0.9444444444444444,
+            "f1": 0.8662420382165605,
+            "false_positives": 17,
+            "false_negatives": 4,
+            "false_positive_rate": 0.010585305105853052,
+            "false_negative_rate": 0.05555555555555555
+          },
+          "vandalism": {
+            "support": 149,
+            "precision": 0.5067873303167421,
+            "recall": 0.7516778523489933,
+            "f1": 0.6054054054054054,
+            "false_positives": 109,
+            "false_negatives": 37,
+            "false_positive_rate": 0.07128842380640942,
+            "false_negative_rate": 0.2483221476510067
+          },
+          "arson": {
+            "support": 120,
+            "precision": 0.8288288288288288,
+            "recall": 0.7666666666666667,
+            "f1": 0.7965367965367965,
+            "false_positives": 19,
+            "false_negatives": 28,
+            "false_positive_rate": 0.012195121951219513,
+            "false_negative_rate": 0.23333333333333334
+          },
+          "smoking": {
+            "support": 229,
+            "precision": 0.7258064516129032,
+            "recall": 0.982532751091703,
+            "f1": 0.8348794063079777,
+            "false_positives": 85,
+            "false_negatives": 4,
+            "false_positive_rate": 0.05866114561766736,
+            "false_negative_rate": 0.017467248908296942
+          },
+          "abandon": {
+            "support": 101,
+            "precision": 0.6907216494845361,
+            "recall": 0.6633663366336634,
+            "f1": 0.6767676767676768,
+            "false_positives": 30,
+            "false_negatives": 34,
+            "false_positive_rate": 0.019023462270133164,
+            "false_negative_rate": 0.33663366336633666
+          },
+          "theft": {
+            "support": 158,
+            "precision": 0.6410256410256411,
+            "recall": 0.6329113924050633,
+            "f1": 0.6369426751592356,
+            "false_positives": 56,
+            "false_negatives": 58,
+            "false_positive_rate": 0.03684210526315789,
+            "false_negative_rate": 0.3670886075949367
+          },
+          "assault": {
+            "support": 167,
+            "precision": 0.7570093457943925,
+            "recall": 0.48502994011976047,
+            "f1": 0.5912408759124088,
+            "false_positives": 26,
+            "false_negatives": 86,
+            "false_positive_rate": 0.017207147584381206,
+            "false_negative_rate": 0.5149700598802395
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.05866114561766736,
+        "normal_to_anomaly_rate": 0.218475073313783,
+        "anomaly_to_normal_rate": 0.05823293172690763
+      },
+      "repaired": {
+        "accuracy": 0.8271752085816448,
+        "macro_f1": 0.8029965347275274,
+        "confusion_matrix": [
+          [
+            596,
+            0,
+            4,
+            19,
+            28,
+            15,
+            19,
+            1
+          ],
+          [
+            0,
+            67,
+            3,
+            0,
+            2,
+            0,
+            0,
+            0
+          ],
+          [
+            6,
+            0,
+            121,
+            0,
+            0,
+            0,
+            1,
+            21
+          ],
+          [
+            13,
+            0,
+            0,
+            103,
+            2,
+            2,
+            0,
+            0
+          ],
+          [
+            8,
+            0,
+            0,
+            0,
+            220,
+            1,
+            0,
+            0
+          ],
+          [
+            17,
+            0,
+            0,
+            0,
+            0,
+            80,
+            4,
+            0
+          ],
+          [
+            9,
+            1,
+            33,
+            0,
+            0,
+            7,
+            104,
+            4
+          ],
+          [
+            3,
+            0,
+            62,
+            0,
+            0,
+            3,
+            2,
+            97
+          ]
+        ],
+        "per_class": {
+          "normal": {
+            "support": 682,
+            "precision": 0.9141104294478528,
+            "recall": 0.873900293255132,
+            "f1": 0.8935532233883059,
+            "false_positives": 56,
+            "false_negatives": 86,
+            "false_positive_rate": 0.05622489959839357,
+            "false_negative_rate": 0.12609970674486803
+          },
+          "fall": {
+            "support": 72,
+            "precision": 0.9852941176470589,
+            "recall": 0.9305555555555556,
+            "f1": 0.9571428571428572,
+            "false_positives": 1,
+            "false_negatives": 5,
+            "false_positive_rate": 0.0006226650062266501,
+            "false_negative_rate": 0.06944444444444445
+          },
+          "vandalism": {
+            "support": 149,
+            "precision": 0.5426008968609866,
+            "recall": 0.8120805369127517,
+            "f1": 0.6505376344086021,
+            "false_positives": 102,
+            "false_negatives": 28,
+            "false_positive_rate": 0.06671026814911707,
+            "false_negative_rate": 0.18791946308724833
+          },
+          "arson": {
+            "support": 120,
+            "precision": 0.8442622950819673,
+            "recall": 0.8583333333333333,
+            "f1": 0.8512396694214877,
+            "false_positives": 19,
+            "false_negatives": 17,
+            "false_positive_rate": 0.012195121951219513,
+            "false_negative_rate": 0.14166666666666666
+          },
+          "smoking": {
+            "support": 229,
+            "precision": 0.873015873015873,
+            "recall": 0.9606986899563319,
+            "f1": 0.9147609147609148,
+            "false_positives": 32,
+            "false_negatives": 9,
+            "false_positive_rate": 0.022084195997239476,
+            "false_negative_rate": 0.039301310043668124
+          },
+          "abandon": {
+            "support": 101,
+            "precision": 0.7407407407407407,
+            "recall": 0.7920792079207921,
+            "f1": 0.7655502392344498,
+            "false_positives": 28,
+            "false_negatives": 21,
+            "false_positive_rate": 0.017755231452124286,
+            "false_negative_rate": 0.2079207920792079
+          },
+          "theft": {
+            "support": 158,
+            "precision": 0.8,
+            "recall": 0.6582278481012658,
+            "f1": 0.7222222222222222,
+            "false_positives": 26,
+            "false_negatives": 54,
+            "false_positive_rate": 0.017105263157894738,
+            "false_negative_rate": 0.34177215189873417
+          },
+          "assault": {
+            "support": 167,
+            "precision": 0.7886178861788617,
+            "recall": 0.5808383233532934,
+            "f1": 0.6689655172413793,
+            "false_positives": 26,
+            "false_negatives": 70,
+            "false_positive_rate": 0.017207147584381206,
+            "false_negative_rate": 0.41916167664670656
+          }
+        },
+        "non_smoking_to_smoking_rate": 0.022084195997239476,
+        "normal_to_anomaly_rate": 0.12609970674486803,
+        "anomaly_to_normal_rate": 0.05622489959839357
+      }
+    }
+  },
+  "streaming_ema_50_percent": {
+    "previous_retrained": {
+      "normal_proxy": {
+        "frames": 9753,
+        "classified_frames": 3616,
+        "false_anomaly_frames": 314,
+        "false_alarm_rate_when_classified": 0.08683628318584069
+      },
+      "fall": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 840,
+        "classified_frames": 338,
+        "correct_frames": 303,
+        "recall_including_missing": 0.3607142857142857,
+        "wrong_classified_frames": 35,
+        "normal_in_event_frames": 12,
+        "smoking_frames": 3,
+        "clips_detected": 10
+      },
+      "vandalism": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 1031,
+        "classified_frames": 922,
+        "correct_frames": 606,
+        "recall_including_missing": 0.5877788554801164,
+        "wrong_classified_frames": 316,
+        "normal_in_event_frames": 197,
+        "smoking_frames": 0,
+        "clips_detected": 13
+      },
+      "arson": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 601,
+        "classified_frames": 586,
+        "correct_frames": 407,
+        "recall_including_missing": 0.6772046589018302,
+        "wrong_classified_frames": 179,
+        "normal_in_event_frames": 100,
+        "smoking_frames": 17,
+        "clips_detected": 12
+      },
+      "smoking": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 1314,
+        "classified_frames": 1135,
+        "correct_frames": 1074,
+        "recall_including_missing": 0.817351598173516,
+        "wrong_classified_frames": 61,
+        "normal_in_event_frames": 58,
+        "smoking_frames": 1074,
+        "clips_detected": 15
+      },
+      "abandon": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 693,
+        "classified_frames": 608,
+        "correct_frames": 230,
+        "recall_including_missing": 0.3318903318903319,
+        "wrong_classified_frames": 378,
+        "normal_in_event_frames": 308,
+        "smoking_frames": 20,
+        "clips_detected": 13
+      },
+      "theft": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 942,
+        "classified_frames": 884,
+        "correct_frames": 488,
+        "recall_including_missing": 0.5180467091295117,
+        "wrong_classified_frames": 396,
+        "normal_in_event_frames": 254,
+        "smoking_frames": 0,
+        "clips_detected": 12
+      },
+      "assault": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 1194,
+        "classified_frames": 955,
+        "correct_frames": 351,
+        "recall_including_missing": 0.29396984924623115,
+        "wrong_classified_frames": 604,
+        "normal_in_event_frames": 291,
+        "smoking_frames": 1,
+        "clips_detected": 12
+      }
+    },
+    "repaired": {
+      "normal_proxy": {
+        "frames": 9753,
+        "classified_frames": 3616,
+        "false_anomaly_frames": 156,
+        "false_alarm_rate_when_classified": 0.04314159292035402
+      },
+      "fall": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 840,
+        "classified_frames": 338,
+        "correct_frames": 293,
+        "recall_including_missing": 0.3488095238095238,
+        "wrong_classified_frames": 45,
+        "normal_in_event_frames": 45,
+        "smoking_frames": 0,
+        "clips_detected": 11
+      },
+      "vandalism": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 1031,
+        "classified_frames": 922,
+        "correct_frames": 681,
+        "recall_including_missing": 0.6605237633365665,
+        "wrong_classified_frames": 241,
+        "normal_in_event_frames": 180,
+        "smoking_frames": 0,
+        "clips_detected": 15
+      },
+      "arson": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 601,
+        "classified_frames": 586,
+        "correct_frames": 462,
+        "recall_including_missing": 0.7687188019966722,
+        "wrong_classified_frames": 124,
+        "normal_in_event_frames": 124,
+        "smoking_frames": 0,
+        "clips_detected": 15
+      },
+      "smoking": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 1314,
+        "classified_frames": 1135,
+        "correct_frames": 1049,
+        "recall_including_missing": 0.7983257229832572,
+        "wrong_classified_frames": 86,
+        "normal_in_event_frames": 86,
+        "smoking_frames": 1049,
+        "clips_detected": 15
+      },
+      "abandon": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 693,
+        "classified_frames": 608,
+        "correct_frames": 376,
+        "recall_including_missing": 0.5425685425685426,
+        "wrong_classified_frames": 232,
+        "normal_in_event_frames": 212,
+        "smoking_frames": 0,
+        "clips_detected": 15
+      },
+      "theft": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 942,
+        "classified_frames": 884,
+        "correct_frames": 516,
+        "recall_including_missing": 0.5477707006369427,
+        "wrong_classified_frames": 368,
+        "normal_in_event_frames": 216,
+        "smoking_frames": 5,
+        "clips_detected": 12
+      },
+      "assault": {
+        "attempted_clips": 16,
+        "annotation_valid_clips": 16,
+        "event_frames": 1194,
+        "classified_frames": 955,
+        "correct_frames": 486,
+        "recall_including_missing": 0.40703517587939697,
+        "wrong_classified_frames": 469,
+        "normal_in_event_frames": 210,
+        "smoking_frames": 0,
+        "clips_detected": 14
+      }
+    }
+  }
+}

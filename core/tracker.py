@@ -11,14 +11,18 @@ class HumanTracker:
       - embedder_gpu : CUDA 가용 시 외형 임베더를 GPU 에서 실행
     """
 
-    def __init__(self, max_age: int = 30, n_init: int = 2):
+    def __init__(self, max_age: int = 30, n_init: int = 2, embedder=None):
+        options = {"embedder": None} if embedder is not None else {}
         self.tracker = DeepSort(
             max_age=max_age,
             n_init=n_init,
             embedder_gpu=torch.cuda.is_available(),
+            **options,
         )
+        if embedder is not None:
+            self.tracker.embedder = embedder
 
-    def update(self, detections: list[dict], frame: np.ndarray) -> list[dict]:
+    def update(self, detections: list[dict], frame: np.ndarray, embeds=None) -> list[dict]:
         """
         detections: HumanDetector.detect() 결과
         검출 결과 사전의 목록을 반환한다.
@@ -36,7 +40,7 @@ class HumanTracker:
             supplementary.append(d.get("keypoints"))
 
         # 검출이 잠시 없어도 확정된 트랙은 최대 소실 프레임까지 유지한다.
-        tracks = self.tracker.update_tracks(raw, frame=frame, others=supplementary)
+        tracks = self.tracker.update_tracks(raw, embeds=embeds, frame=frame, others=supplementary)
         results = []
         for t in tracks:
             # 연속 프레임에서 충분히 관측되지 않은 잠정 트랙은 제외

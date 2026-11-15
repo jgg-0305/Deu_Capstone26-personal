@@ -21,7 +21,7 @@ class AnalysisRegressionTests(unittest.TestCase):
         self.assertIs(result[1], points)
         self.assertIs(result[2], points)
 
-    def run_video(self, probability):
+    def run_video(self, probability, sample_fps=None):
         calls = []
         frames = 40
         frame = np.zeros((64, 64, 3), dtype=np.uint8)
@@ -49,13 +49,16 @@ class AnalysisRegressionTests(unittest.TestCase):
         tracker.update.return_value = tracks
         rule = Mock()
         rule.update.return_value = set()
+        behavior_model = nn.Identity()
+        if sample_fps is not None:
+            behavior_model.behavior_input_config = {'sample_fps': sample_fps}
         with patch('backend.worker.verified_models', return_value=({'pose': '', 'object': '', 'behavior': ''}, {})), \
              patch('backend.worker.source_frames', source), \
              patch('backend.worker.HumanDetector', return_value=pose), \
              patch('backend.worker.ObjectDetector', return_value=detector), \
              patch('backend.worker.HumanTracker', return_value=tracker), \
              patch('backend.worker.TheftMonitor', return_value=rule), \
-             patch.object(TrackBehaviorBuffer, '_build_and_load', return_value=nn.Identity()), \
+             patch.object(TrackBehaviorBuffer, '_build_and_load', return_value=behavior_model), \
              patch.object(TrackBehaviorBuffer, '_infer', return_value=probabilities):
             analyze(api, 'test-camera', AnalysisInput().threshold)
         self.assertEqual(detector.detect.call_count, frames)
@@ -85,6 +88,15 @@ class AnalysisRegressionTests(unittest.TestCase):
         self.assertFalse(any(path.endswith('/events') for path, _ in calls))
         self.assertEqual(AnalysisInput().detection_interval, 1)
         self.assertEqual(AnalysisInput().detection_confidence, .4)
+
+    def test_worker_respects_checkpoint_sample_fps(self):
+        calls = self.run_video(.8, sample_fps=3)
+        final = [body['snapshot'] for path, body in calls if path.endswith('/snapshot')][-1]
+        self.assertEqual(final['inference_count'], 0)
+        self.assertEqual(final['pose_count'], 40)
+        self.assertEqual(final['behavior_sample_fps'], 3)
+        self.assertEqual(final['people'][0]['buffer']['collected'], 5)
+        self.assertFalse(any(path.endswith('/events') for path, _ in calls))
 
 
 if __name__ == '__main__':
