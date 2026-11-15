@@ -101,6 +101,10 @@ def main():
                         'event_frames':expected,'classified_frames':classified,
                         'correct_frames':right,'recall_including_missing':right/expected if expected else None,
                         'wrong_classified_frames':classified-right,
+                        'uncertain_frames':sum(r['event_uncertain_frames'] for r in items),
+                        'missing_or_collecting_frames':sum(r['event_missing_or_collecting_frames'] for r in items),
+                        'visible_wrong_frames':sum(sum(r['event_visible_predictions'].values())
+                                                  - r['event_visible_predictions'].get(label,0) for r in items),
                         'normal_in_event_frames':sum(r['event_predictions'].get('normal',0) for r in items),
                         'smoking_frames':sum(r['event_predictions'].get('smoking',0) for r in items),
                         'clips_detected':sum(r['event_predictions'].get(label,0)>0 for r in items)}

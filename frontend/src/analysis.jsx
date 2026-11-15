@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useState } from "react";
-import { frameAt, shouldWait } from "./analysis-timeline.js";
+import { frameAt } from "./analysis-timeline.js";
+import { settingsPreset } from "./analysis-settings.js";
+export { initialSettings } from "./analysis-settings.js";
 
 export const labels = ["정상", "넘어짐", "파손", "방화", "흡연", "유기", "도난 의심", "폭행"];
-export const initialSettings = {
-  behavior_model: "behavior", pose_model: "human_pose", resolution: 480, detection_interval: 1,
-  detection_confidence: 0.4, threshold: 0.5, event_threshold: 0.6, max_age: 30,
-};
-export const initialDisplay = { box: true, id: true, points: true, label: true, stand: true, pos: false };
+export const initialDisplay = { box: true, id: true, points: true, label: true };
 export const modelNames = {
   human_pose: "YOLO11n · 경량", human_pose_s: "YOLO11s · 균형",
   behavior: "KeypointLSTM v2 · 관절과 움직임",
@@ -86,7 +84,7 @@ export function useSnapshots(sources, api) {
       }));
       if (disposed) return;
       setSnapshots(Object.fromEntries(rows));
-      if (keys.includes(":running")) timer = setTimeout(poll, 220);
+      if (keys.includes(":running")) timer = setTimeout(poll, 100);
     }
     poll();
     return () => { disposed = true; clearTimeout(timer); };
@@ -120,11 +118,6 @@ function AnalysisOverlay({ snapshot, display }) {
       장면 · {labels[snapshot.scene[0]]} {Math.round(snapshot.scene[1] * 100)}%
     </span>}
     <svg ref={svg} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-      {(snapshot.objects || []).filter((item) => item.class_id === 0 ? display.stand : display.pos).map((item, index) => {
-        const [x1, y1, x2, y2] = box(item.box);
-        return <rect key={index} x={x1} y={y1} width={x2 - x1} height={y2 - y1}
-          className={item.class_id === 0 ? "stand-box" : "pos-box"} />;
-      })}
       {snapshot.people.map((person) => {
         const [x1, y1, x2, y2] = box(person.box);
         const points = person.points;
@@ -155,12 +148,15 @@ export function ModelStatus({ source, snapshot }) {
   const running = source.status === "running";
   let message;
   if (source.status === "failed") message = failures[source.error_code] || "분석에 실패했습니다. 워커 실행 상태와 등록된 모델을 확인하세요.";
-  else if (source.status === "queued") message = "워커 배정 대기 · 계속 대기하면 분석 워커가 실행 중인지 확인하세요.";
+  else if (source.status === "queued") message = source.worker_connected
+    ? "분석 대기열에 등록됨 · 작업 슬롯을 기다리는 중"
+    : "분석 워커 연결 끊김 · 워커에 연결되면 분석을 시작합니다.";
   else if (source.status === "starting") message = "모델 파일 확인 중";
   else if (snapshot?.unavailable) message = "분석 상태를 조회할 수 없습니다. 서버 연결을 확인하세요.";
   else if (!snapshot || snapshot.run_id !== source.run_id) message = running ? "워커 연결됨 · 모델 준비 중" : "분석 기록 없음";
   else if (running && Date.now() - snapshot.updated_at_ms > 10000) message = "분석 결과 갱신 지연 · 마지막 처리 " + snapshot.frame_count + "프레임";
   else if (snapshot.phase === "loading") message = "모델 불러오는 중 · " + modelNames[snapshot.pose_model];
+  else if (snapshot.phase === "reconnecting") message = "RTSP 카메라 연결 중 · 영상 입력을 다시 시도합니다.";
   else {
     const progress = snapshot.total_frames ? ` / ${snapshot.total_frames} (${Math.min(100, Math.round(snapshot.frame_count / snapshot.total_frames * 100))}%)` : "";
     message = `${source.status === "completed" ? "분석 완료" : source.status === "stopped" ? "분석 중단" : "분석 중"} · ${snapshot.frame_count}${progress}프레임`;
@@ -171,11 +167,14 @@ export function ModelStatus({ source, snapshot }) {
       사람 검출 {snapshot.pose_count ?? 0}회 · 행동 추론 {snapshot.inference_count ?? 0}회
       {snapshot.fps > 0 && ` · 처리 ${snapshot.fps.toFixed(1)} FPS`}
       {snapshot.source_fps > 0 && ` · 입력 ${snapshot.source_fps.toFixed(1)} FPS`}
-      {snapshot.inference_count === 0 && snapshot.phase !== "loading" &&
+      {snapshot.inference_count === 0 && !["loading", "reconnecting"].includes(snapshot.phase) &&
         (snapshot.scene_buffer ? ` · 장면 수집 ${snapshot.scene_buffer.collected}/${snapshot.scene_buffer.required}` :
           snapshot.people.length ? " · 동일 인물의 관절 30개 시점 수집 중" : " · 사람 검출 대기")}
-      {snapshot.frame_duration_ms > 0 && snapshot.behavior_model !== "behavior_rgb" &&
-        ` · 분류 입력 ${(snapshot.frame_duration_ms * 30 / 1000).toFixed(1)}초`}
+      {snapshot.behavior_model !== "behavior_rgb" &&
+        (snapshot.behavior_sample_fps > 0
+          ? ` · 분류 입력 ${(30 / snapshot.behavior_sample_fps).toFixed(1)}초`
+          : snapshot.frame_duration_ms > 0
+            ? ` · 분류 입력 ${(snapshot.frame_duration_ms * 30 / 1000).toFixed(1)}초` : "")}
     </span>}
     {source.pose_model && <span>{modelNames[source.pose_model]} · {modelNames[source.behavior_model] || source.behavior_filename}</span>}
   </div>;
@@ -184,11 +183,8 @@ export function ModelStatus({ source, snapshot }) {
 export function FileAnalysis({ source, display, enabled, onError }) {
   const [timeline, setTimeline] = useState({ run: null, frames: [], offset: 0 });
   const [time, setTime] = useState(0);
-  const [waiting, setWaiting] = useState(false);
   const [timelineError, setTimelineError] = useState("");
   const video = useRef(null);
-  const wantsPlay = useRef(false);
-  const autoPause = useRef(false);
   const cache = useRef(timeline);
   const { id, status } = source;
   const run = ["queued", "starting"].includes(status) ? null : source.run_id;
@@ -196,7 +192,7 @@ export function FileAnalysis({ source, display, enabled, onError }) {
   cache.current = timeline;
   useEffect(() => {
     const player = video.current;
-    if (!player.requestVideoFrameCallback) return;
+    if (!player?.requestVideoFrameCallback) return;
     let handle;
     const update = (_, frame) => {
       setTime(frame.mediaTime * 1000);
@@ -225,11 +221,11 @@ export function FileAnalysis({ source, display, enabled, onError }) {
             ...(current.run === run ? current.frames : []), ...data.frames,
           ], offset }));
         }
-        if (data.frames.length || running) timer = setTimeout(poll, data.frames.length ? 0 : 300);
+        if (data.frames.length || running) timer = setTimeout(poll, data.frames.length ? 0 : 100);
       } catch (error) {
         if (!cancelled) {
           setTimelineError(error.message);
-          timer = setTimeout(poll, 1500);
+          if (running) timer = setTimeout(poll, 1500);
         }
       }
     }
@@ -239,44 +235,17 @@ export function FileAnalysis({ source, display, enabled, onError }) {
   }, [id, run, running]);
   const frames = timeline.run === run ? timeline.frames : [];
   const current = frameAt(frames, time);
-  // AI 화면은 분석이 끝난 시점까지만 재생하고 결과가 도착하면 이어서 재생한다.
-  useEffect(() => {
-    const player = video.current;
-    if (!wantsPlay.current) return;
-    const wait = enabled && shouldWait(frames, time, running, waiting);
-    if (wait) {
-      if (!player.paused) { autoPause.current = true; player.pause(); }
-      if (!waiting) setWaiting(true);
-    } else if (waiting) {
-      setWaiting(false);
-      player.play().catch(() => { wantsPlay.current = false; });
-    }
-  }, [frames, time, running, waiting, enabled]);
   const update = (event) => setTime(event.currentTarget.currentTime * 1000);
   return <div className="file-analysis">
     <div className="analysis-frame synchronized-video">
       <video ref={video} controls playsInline preload="metadata" src={"/api/v1/cameras/" + id + "/video"}
-        onTimeUpdate={update} onSeeking={update} onError={onError}
-        onPlay={() => {
-          wantsPlay.current = true;
-          if (enabled && shouldWait(frames, video.current.currentTime * 1000, running, false)) {
-            autoPause.current = true;
-            video.current.pause();
-            setWaiting(true);
-          }
-        }}
-        onPause={() => {
-          if (autoPause.current) { autoPause.current = false; return; }
-          wantsPlay.current = false;
-          setWaiting(false);
-        }} />
+        onTimeUpdate={update} onSeeking={update} onError={onError} />
       {enabled && current && <AnalysisOverlay snapshot={current} display={display} />}
     </div>
     <div className="playback-status">
-      <span>{!enabled ? "원본 재생" : waiting ? "AI 분석을 기다리는 중 · 준비되면 자동 재생" :
+      <span>{!enabled ? "원본 영상" :
         current ? `AI 분석 · 영상 ${(time / 1000).toFixed(1)}초 · 행동 추론 ${current.inference_count ?? 0}회` :
-        "이 시점의 분석 결과 없음"}</span>
-      {waiting && <button type="button" onClick={() => { wantsPlay.current = false; setWaiting(false); }}>대기 취소</button>}
+        running ? "이 재생 시점의 추적 결과 처리 중" : "이 시점의 추적 결과 없음"}</span>
       {timelineError && <span role="alert">{timelineError}</span>}
       {enabled && current && <span className="playback-results">{current.people.length ? current.people.map((person) =>
         `ID ${person.id}: ${behaviorText(person)}`).join(" · ") : "이 시점에 감지된 인물 없음"}</span>}
@@ -296,10 +265,8 @@ export function AnalysisSettings({ settings, setSettings, models, chosen, apply,
   return <section className="panel">
     <h2>모델 설정</h2>
     <div className="switch model-presets">
-      <button type="button" disabled={pending} onClick={() => setSettings({ ...initialSettings,
-        pose_model: demoAvailable ? "human_pose_s" : "human_pose" })}>원본 영상 기본값</button>
-      <button type="button" disabled={pending || !demoAvailable} onClick={() => setSettings({ ...initialSettings,
-        pose_model: "human_pose_s", detection_confidence: 0.9 })}>데모 비교용 설정</button>
+      <button type="button" disabled={pending} onClick={() => setSettings(settingsPreset(settings, demoAvailable))}>원본 영상 기본값</button>
+      <button type="button" disabled={pending || !demoAvailable} onClick={() => setSettings(settingsPreset(settings, demoAvailable, true))}>데모 비교용 설정</button>
     </div>
     {!demoAvailable && <p className="muted">YOLO11s를 설치하고 모델을 등록하면 데모 설정을 선택할 수 있습니다.</p>}
     <form onSubmit={apply}>
@@ -346,8 +313,7 @@ export function AnalysisSettings({ settings, setSettings, models, chosen, apply,
 }
 
 export function DisplaySettings({ display, setDisplay }) {
-  const options = { box: "바운딩 박스", id: "트랙 ID", points: "관절 키포인트",
-    label: "행동 분류", stand: "물품 가판대 감지", pos: "결제기(POS) 감지" };
+  const options = { box: "사람 바운딩 박스", id: "트랙 ID", points: "관절 키포인트", label: "행동 분류" };
   return <section className="panel display-settings">
     <h2>표시 옵션</h2>
     {Object.entries(options).map(([key, name]) => <label key={key}>

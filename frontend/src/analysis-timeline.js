@@ -15,9 +15,3 @@ export function frameAt(frames, time) {
   const duration = frame.frame_duration_ms ?? (next ? next.time_ms - frame.time_ms : 220);
   return time - frame.time_ms <= duration + 1 ? frame : null;
 }
-
-export function shouldWait(frames, time, running, waiting) {
-  const frontier = frames.at(-1)?.time_ms ?? -1;
-  // 다시 재생할 때 약간의 여유를 확보해 짧은 재생과 정지를 반복하지 않는다.
-  return running && (frontier < 0 || frontier - time < (waiting ? 600 : 120));
-}

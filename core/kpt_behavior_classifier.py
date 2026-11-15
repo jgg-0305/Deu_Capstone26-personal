@@ -269,6 +269,12 @@ class TrackBehaviorBuffer:
         self._missing.pop(tid, None)
         self.reset_count += 1
 
+    def reset(self):
+        """Discard temporal state when a camera opens a new connection."""
+        for tid in list(self._bufs):
+            self._forget(tid)
+        self._sample_index = None
+
     def progress(self, track_id):
         """추론 조건을 바꾸지 않고 해당 인물의 관절 수집 진행도를 반환한다."""
         buf = self._bufs.get(track_id, ())
@@ -278,7 +284,8 @@ class TrackBehaviorBuffer:
         candidate = None if probs is None else {"label": int(probs.argmax()), "score": float(probs.max())}
         state = "tracking_gap" if missing else "collecting" if len(buf) < self.seq_len else (
             "insufficient_keypoints" if valid < self.seq_len * 0.5 else "classified" if track_id in self._results else "collecting")
-        if state == "classified" and candidate["label"] != 0 and candidate["score"] < self.abn_conf_thr:
+        # A weak normal argmax is also uncertain, not evidence that nothing happened.
+        if state == "classified" and candidate["score"] < self.abn_conf_thr:
             state = "uncertain"
         return {"collected": len(buf), "required": self.seq_len,
                 "valid": valid, "missing_frames": missing, "state": state, "candidate": candidate}

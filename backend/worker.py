@@ -134,6 +134,8 @@ def capture_frames(capture):
     if not math.isfinite(fps) or fps <= 0:
         fps = 30
     index = 0
+    started = time.monotonic()
+    first_pts = None
     while True:
         ok, frame = capture.read()
         if not ok:
@@ -141,6 +143,11 @@ def capture_frames(capture):
         pts = capture.get(cv2.CAP_PROP_POS_MSEC)
         if not math.isfinite(pts) or pts < 0 or (index and pts == 0):
             pts = index * 1000 / fps
+        if first_pts is None:
+            first_pts = pts
+        # A file can stand in for a camera: deliver frames on its media clock.
+        if STOP.wait(max(0, started + (pts - first_pts) / 1000 - time.monotonic())):
+            return
         yield frame, pts
         index += 1
 
@@ -152,35 +159,45 @@ def rtsp_frames(url):
     stopped = Event()
 
     def read():
-        capture = None
         started = time.monotonic()
-        try:
-            capture = open_capture(url)
-            while not stopped.is_set() and not STOP.is_set():
-                ok, frame = capture.read()
-                if not ok:
-                    break
-                try:
-                    latest.put_nowait((frame, (time.monotonic() - started) * 1000))
-                except Full:
+        generation = 0
+        while not stopped.is_set() and not STOP.is_set():
+            capture = None
+            try:
+                generation += 1
+                capture = open_capture(url)
+                while capture.isOpened() and not stopped.is_set() and not STOP.is_set():
+                    ok, frame = capture.read()
+                    if not ok:
+                        break
+                    item = (frame, (time.monotonic() - started) * 1000, generation)
                     try:
-                        latest.get_nowait()
-                    except Empty:
-                        pass
-                    latest.put_nowait((frame, (time.monotonic() - started) * 1000))
-        finally:
-            stopped.set()
-            if capture is not None:
-                capture.release()
+                        latest.put_nowait(item)
+                    except Full:
+                        try:
+                            latest.get_nowait()
+                        except Empty:
+                            pass
+                        latest.put_nowait(item)
+            except (cv2.error, OSError, RuntimeError):
+                pass
+            finally:
+                if capture is not None:
+                    capture.release()
+            stopped.wait(2)
 
     def consume():
+        generation = None
         while not stopped.is_set() and not STOP.is_set():
             try:
-                yield latest.get(timeout=0.25)
+                frame, pts, current = latest.get(timeout=1)
             except Empty:
+                yield None, None
                 continue
-        if not STOP.is_set():
-            raise SourceError("RTSP 연결이 종료되었습니다.")
+            if generation is not None and current != generation:
+                yield None, pts
+            generation = current
+            yield frame, pts
 
     reader = Thread(target=read, daemon=True)
     reader.start()
@@ -228,7 +245,7 @@ def publish_snapshot(api, path, lease, run_id, frame, tracks, keypoints, predict
         label, score = predictions.get(tid, (None, None))
         progress = diagnostics["buffers"].get(tid)
         if progress and progress["state"] == "uncertain":
-            # 임계값 미달인 이상행동 후보를 확정된 정상 결과처럼 표시하지 않는다.
+            # 정상 후보도 표시 기준 미달이면 확정된 정상 결과로 표시하지 않는다.
             label, score = None, None
         if tid in suspects and not label:
             label, score = 6, None
@@ -250,13 +267,11 @@ def publish_snapshot(api, path, lease, run_id, frame, tracks, keypoints, predict
         "width": width, "height": height, "updated_at_ms": round(time.time() * 1000),
         **{key: value for key, value in diagnostics.items() if key != "buffers"},
     }
-    if not file_source:
-        scale = min(1, 640 / width, 480 / height)
-        if scale < 1:
-            frame = cv2.resize(frame, (max(1, round(width * scale)), max(1, round(height * scale))))
-        ok, image = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
-        if not ok:
-            return
+    scale = min(1, 640 / width, 480 / height)
+    if scale < 1:
+        frame = cv2.resize(frame, (max(1, round(width * scale)), max(1, round(height * scale))))
+    ok, image = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 72])
+    if ok:
         snapshot["image"] = base64.b64encode(image.tobytes()).decode("ascii")
     api.request("POST", path + "/snapshot", {**lease, "snapshot": snapshot, "timeline": file_source})
 
@@ -338,6 +353,21 @@ def analyze(api, camera_id, threshold, job=None):
                 if now - last_heartbeat >= 8:
                     api.request("POST", path + "/heartbeat", lease)
                     last_heartbeat = now
+                if frame is None:
+                    if pts is not None:
+                        tracker = HumanTracker(max_age=settings["max_age"], embedder=tracker.tracker.embedder)
+                        if behavior:
+                            behavior.reset()
+                        if rgb:
+                            rgb.features.clear()
+                        rule = TheftMonitor()
+                        tracks, keypoints, predictions, objects, suspects, scene = [], {}, {}, [], set(), None
+                        previous.clear()
+                    api.request("POST", path + "/snapshot", {**lease, "snapshot": {
+                        **diagnostics(), "phase": "reconnecting", "people": [], "objects": [],
+                        "frame_count": frame_count, "fps": 0, "updated_at_ms": round(time.time() * 1000),
+                    }})
+                    continue
                 if frame_count % settings["detection_interval"] == 0:
                     detections = pose.detect(frame)
                     pose_count += 1
@@ -379,7 +409,7 @@ def analyze(api, camera_id, threshold, job=None):
                     count += 1
                 previous = set(candidates)
                 frame_count += 1
-                publish_due = (frame_count - 1) % settings["detection_interval"] == 0 if file_source else now - last_snapshot >= 0.20
+                publish_due = (frame_count - 1) % settings["detection_interval"] == 0 if file_source else now - last_snapshot >= 0.10
                 if publish_due:
                     publish_snapshot(api, path, lease, run["id"], frame, tracks, keypoints,
                                      predictions, objects, suspects, frame_count, pts,
@@ -436,9 +466,18 @@ def run_job(args, token, job):
 def serve(api, args, token):
     running = {"file": [], "live": []}
     executor = ThreadPoolExecutor(max_workers=1 + args.live_slots)
+    next_heartbeat = 0
     try:
         print("관제실 영상 분석 요청을 기다립니다.", flush=True)
         while not STOP.is_set():
+            if time.monotonic() >= next_heartbeat:
+                try:
+                    api.request("POST", "/worker/heartbeat")
+                except (WorkerError, requests.RequestException) as error:
+                    print(f"분석 워커 연결 실패: {error}", flush=True)
+                    STOP.wait(2)
+                    continue
+                next_heartbeat = time.monotonic() + 3
             for kind, limit in (("file", 1), ("live", args.live_slots)):
                 running[kind] = [job for job in running[kind] if not job.done()]
                 if len(running[kind]) < limit:
@@ -449,7 +488,7 @@ def serve(api, args, token):
                         break
                     if job:
                         running[kind].append(executor.submit(run_job, args, token, job))
-            time.sleep(1)
+            STOP.wait(0.5)
     finally:
         STOP.set()
         executor.shutdown()

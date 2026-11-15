@@ -39,8 +39,11 @@ class AnalysisRegressionTests(unittest.TestCase):
                 return {'id': 'test-run', 'lease_token': 'test-lease', 'source_type': 'sample'}
 
         api = Mock(request=request)
-        probabilities = np.zeros(8, dtype=np.float32)
-        probabilities[0], probabilities[6] = 1 - probability, probability
+        if np.ndim(probability):
+            probabilities = np.asarray(probability, dtype=np.float32)
+        else:
+            probabilities = np.zeros(8, dtype=np.float32)
+            probabilities[0], probabilities[6] = 1 - probability, probability
         pose = Mock(is_pose=True)
         pose.detect.return_value = [{'bbox': tracks[0]['bbox'], 'keypoints': points}]
         detector = Mock(names={0: 'stand', 1: 'pos'})
@@ -96,6 +99,16 @@ class AnalysisRegressionTests(unittest.TestCase):
         self.assertEqual(final['pose_count'], 40)
         self.assertEqual(final['behavior_sample_fps'], 3)
         self.assertEqual(final['people'][0]['buffer']['collected'], 5)
+        self.assertFalse(any(path.endswith('/events') for path, _ in calls))
+
+    def test_worker_does_not_publish_weak_normal_as_confirmed_normal(self):
+        calls = self.run_video([.4, 0, 0, 0, .3, 0, .3, 0])
+        final = [body['snapshot'] for path, body in calls if path.endswith('/snapshot')][-1]
+        person = final['people'][0]
+        self.assertIsNone(person['label'])
+        self.assertIsNone(person['score'])
+        self.assertEqual(person['buffer']['state'], 'uncertain')
+        self.assertEqual(person['buffer']['candidate']['label'], 0)
         self.assertFalse(any(path.endswith('/events') for path, _ in calls))
 
 

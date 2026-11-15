@@ -302,7 +302,7 @@ def live():
 @app.get("/health/ready")
 def ready(db: Db):
     if db.execute("SELECT 1 FROM schema_migrations WHERE name = %s",
-                  ("008_behavior_uploads.sql",)).fetchone() is None:
+                  ("009_worker_presence.sql",)).fetchone() is None:
         raise HTTPException(503, "Database migration is required")
     return {"status": "ready"}
 
@@ -657,6 +657,10 @@ def cameras(user: User, db: Db, limit: Annotated[int, Query(ge=1, le=100)] = 50)
                          AND r.lease_expires_at <= now() THEN 'failed'
                     ELSE COALESCE(r.status, 'idle') END AS status,
                r.id AS run_id, r.behavior_model, r.pose_model, r.config_snapshot, r.error_code,
+               CASE WHEN j.status = 'queued' THEN EXISTS (
+                   SELECT 1 FROM analysis_worker_presence
+                   WHERE last_seen_at > now() - interval '10 seconds'
+               ) END AS worker_connected,
                r.behavior_filename, r.behavior_sha256,
                video.id AS media_id, COALESCE(r.event_count, 0) AS event_count
         FROM cameras c
@@ -689,8 +693,14 @@ def cameras(user: User, db: Db, limit: Annotated[int, Query(ge=1, le=100)] = 50)
 
 def expire_jobs(db, camera_id=None):
     db.execute("""
-        UPDATE analysis_jobs j SET status = 'failed', claim_token = NULL, claim_expires_at = NULL
-        WHERE j.status = 'claimed' AND (%s::uuid IS NULL OR j.camera_id = %s)
+        UPDATE analysis_jobs j
+        SET status = CASE WHEN c.source_type = 'rtsp' AND c.is_enabled AND c.deleted_at IS NULL
+                          THEN 'queued' ELSE 'failed' END,
+            run_id = CASE WHEN c.source_type = 'rtsp' AND c.is_enabled AND c.deleted_at IS NULL
+                          THEN NULL ELSE j.run_id END,
+            claim_token = NULL, claim_expires_at = NULL
+        FROM cameras c
+        WHERE c.id = j.camera_id AND j.status = 'claimed' AND (%s::uuid IS NULL OR j.camera_id = %s)
           AND ((j.run_id IS NULL AND j.claim_expires_at <= clock_timestamp()) OR EXISTS (
               SELECT 1 FROM inference_runs r WHERE r.id = j.run_id
                 AND r.lease_expires_at <= clock_timestamp()
@@ -924,6 +934,14 @@ def worker_models(authorized: Worker, db: Db):
     """).fetchall()
 
 
+@app.post("/internal/v1/worker/heartbeat", status_code=204)
+def worker_heartbeat(authorized: Worker, db: Db):
+    db.execute("""
+        INSERT INTO analysis_worker_presence (singleton, last_seen_at) VALUES (true, clock_timestamp())
+        ON CONFLICT (singleton) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
+    """)
+
+
 @app.post("/internal/v1/jobs/claim")
 def claim_job(authorized: Worker, db: Db, kind: Literal["file", "live"] = "file"):
     expire_jobs(db)
@@ -1043,8 +1061,10 @@ def save_snapshot(run_id: UUID, data: SnapshotInput, authorized: Worker, db: Db)
         raise HTTPException(413, "분석 미리보기가 너무 큽니다.")
     replace_frame(run["camera_id"], "analysis.json", payload)
     if data.timeline:
+        entry = {**data.snapshot, "run_id": str(run_id)}
+        entry.pop("image", None)
         with frame_path(run_id, "timeline.jsonl").open("ab") as output:
-            output.write(payload + b"\n")
+            output.write(json.dumps(entry, allow_nan=False).encode() + b"\n")
     return Response(status_code=204)
 
 

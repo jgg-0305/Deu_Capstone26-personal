@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { DeleteDialog, Storage } from "./storage.jsx";
+import { settingsForSource } from "./analysis-settings.js";
 import {
   AnalysisFrame, AnalysisSettings, AnalysisStats, DisplaySettings, FileAnalysis, ModelStatus,
   initialDisplay, initialSettings, startWebcamFeed, useSnapshots,
@@ -130,8 +131,9 @@ function RtspPreview({ source }) {
 function SourceTile({ source, selected, onSelect, onVideoError, remove, style, hidden, snapshot, display, pending }) {
   const live = liveTypes.has(source.source_type);
   const [overlay, setOverlay] = useState(true);
+  const workerPreview = source.status === "running" && snapshot?.image && snapshot.run_id === source.run_id;
   const visibleDisplay = overlay ? display : {
-    box: false, id: false, points: false, label: false, stand: false, pos: false,
+    box: false, id: false, points: false, label: false,
   };
   return <article className={"tile" + (selected ? " selected" : "")} style={style} hidden={hidden}>
     <div className="tile-head">
@@ -144,10 +146,15 @@ function SourceTile({ source, selected, onSelect, onVideoError, remove, style, h
       {remove && <button className="tile-remove" type="button" aria-label={source.name + " 제거"}
         title="영상 소스 제거" disabled={pending} onClick={remove}>×</button>}
     </div>
-    {snapshot?.image && live ? <AnalysisFrame snapshot={snapshot} display={visibleDisplay} /> :
+    {workerPreview && (live || overlay)
+      ? <AnalysisFrame snapshot={snapshot} display={visibleDisplay} /> :
       source.source_type === "webcam" ? source.stream ? <WebcamVideo stream={source.stream} /> :
         <div className="tile-screen">브라우저에서 웹캠을 다시 연결하세요.</div> :
-      source.source_type === "rtsp" ? !hidden && <RtspPreview source={source} /> :
+      source.source_type === "rtsp" ? !hidden && (overlay
+        ? <div className="tile-screen" role="status">{
+          snapshot?.phase === "reconnecting" ? "RTSP 영상에 연결 중…" : "실시간 분석 영상을 준비 중…"
+        }</div>
+        : <RtspPreview source={source} />) :
       !hidden && <FileAnalysis source={source} display={visibleDisplay} enabled={overlay} onError={onVideoError} />}
     <ModelStatus source={source} snapshot={snapshot} />
     <div className="tile-footer live-actions">
@@ -161,9 +168,10 @@ function SourceTile({ source, selected, onSelect, onVideoError, remove, style, h
 
 function Monitor({ sources, models, selection, select, api, canWrite, refresh, refreshModels, notify, onError }) {
   const [layout, setLayout] = useState("grid");
-  const [sourceMode, setSourceMode] = useState("upload");
+  const [sourceMode, setSourceMode] = useState("rtsp");
   const [settings, setSettings] = useState(initialSettings);
   const defaultChosen = useRef(false);
+  const settingsSource = useRef(null);
   const [display, setDisplay] = useState(initialDisplay);
   const [pending, setPending] = useState(false);
   const [devices, setDevices] = useState([]);
@@ -178,12 +186,21 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
   const media = navigator.mediaDevices;
 
   useEffect(() => {
+    if (chosen) {
+      const key = chosen.id + ":" + (chosen.run_id || "");
+      if (settingsSource.current !== key && chosen.behavior_model) {
+        settingsSource.current = key;
+        setSettings(settingsForSource(chosen));
+      }
+      return;
+    }
+    settingsSource.current = null;
     if (defaultChosen.current || !models.length) return;
     defaultChosen.current = true;
     if (models.some((model) => model.name === "human_pose_s")) {
       setSettings((current) => ({ ...current, pose_model: "human_pose_s" }));
     }
-  }, [models]);
+  }, [models, chosen]);
 
   useEffect(() => {
     const current = streams.current;
@@ -359,7 +376,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
         <section className="panel">
           <h2>영상 소스 추가</h2>
           <div className="switch source-modes" aria-label="영상 등록 방식">
-            {[["upload", "파일 추가…"], ["webcam", "웹캠 추가"], ["rtsp", "IP 카메라 (RTSP)"], ["sample", "기본 샘플"]].map(([mode, label]) =>
+            {[["rtsp", "IP 카메라 (RTSP)"], ["webcam", "웹캠 추가"], ["upload", "영상으로 CCTV 테스트"], ["sample", "기본 샘플"]].map(([mode, label]) =>
               <button key={mode} type="button" aria-pressed={sourceMode === mode} disabled={pending} onClick={() => setSourceMode(mode)}>{label}</button>)}
           </div>
           <form key={sourceMode} onSubmit={add}>
@@ -390,7 +407,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
               <input id="source-name" name="name" maxLength={120} placeholder="예: 매장 입구" required />
             </>}
             <button className="primary" disabled={pending}>{pending ? "처리 중…" :
-              sourceMode === "webcam" ? "웹캠 연결" : sourceMode === "rtsp" ? "IP 카메라 등록" : "영상 등록"}</button>
+              sourceMode === "webcam" ? "웹캠 연결" : sourceMode === "rtsp" ? "CCTV 연결" : "영상 등록 및 테스트"}</button>
           </form>
         </section>
         <AnalysisSettings {...{ settings, setSettings, models, chosen, pending }} apply={analyze} attachBehavior={canWrite ? attachBehavior : null} />

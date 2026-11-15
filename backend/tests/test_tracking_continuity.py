@@ -90,6 +90,18 @@ class TrackingContinuityTests(unittest.TestCase):
         self.assertEqual(model.progress(1)['state'], 'insufficient_keypoints')
         self.assertEqual(result, {})
 
+    def test_low_confidence_normal_remains_uncertain(self):
+        model = self.make_buffer()
+        probabilities = np.zeros(8, dtype=np.float32)
+        probabilities[0], probabilities[4], probabilities[6] = .4, .3, .3
+        model._infer.return_value = probabilities
+        for _ in range(30):
+            model.update([{'track_id': 1, 'bbox': [0, 0, 40, 60]}], {1: np.ones((17, 3))})
+        progress = model.progress(1)
+        self.assertEqual(progress['state'], 'uncertain')
+        self.assertEqual(progress['candidate']['label'], 0)
+        self.assertAlmostEqual(progress['candidate']['score'], .4, places=6)
+
     def test_keypoints_follow_the_trackers_association_in_overlapping_people(self):
         first, second = np.ones((17, 3)), np.ones((17, 3)) * 2
         tracks = [{'track_id': 1, 'bbox': [0, 0, 40, 60], 'keypoints': first},
