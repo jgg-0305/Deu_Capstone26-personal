@@ -208,6 +208,8 @@ class VideoThread(QThread):
                     if self._seek_fraction is not None and total_frames > 0:
                         cap.set(cv2.CAP_PROP_POS_FRAMES,
                                 int(self._seek_fraction * total_frames))
+                        if kpt_buf is not None:
+                            kpt_buf.reset()
                         self._seek_fraction = None
                         ret, frame = cap.read()
                         if ret:
@@ -221,6 +223,8 @@ class VideoThread(QThread):
                 if self._seek_fraction is not None and total_frames > 0:
                     cap.set(cv2.CAP_PROP_POS_FRAMES,
                             int(self._seek_fraction * total_frames))
+                    if kpt_buf is not None:
+                        kpt_buf.reset()
                     self._seek_fraction = None
 
                 loop_start = time.time()
@@ -242,6 +246,8 @@ class VideoThread(QThread):
                     cap = self._open_capture()
                     if not cap.isOpened():
                         continue
+                    if kpt_buf is not None:
+                        kpt_buf.reset()
                     _reconnect_count = 0
                     continue
 
@@ -264,7 +270,9 @@ class VideoThread(QThread):
                     # 키포인트 행동 분류 (pose 모델 + kpt_model 지정 시)
                     behavior_map = {}
                     if kpt_buf is not None:
-                        behavior_map = kpt_buf.update(tracks, kpt_map)
+                        seconds = (max(0, cap.get(cv2.CAP_PROP_POS_FRAMES) - 1) / src_fps
+                                   if self.is_file and src_fps > 0 else time.monotonic())
+                        behavior_map = kpt_buf.update(tracks, kpt_map, source_seconds=seconds, frame=frame)
 
                     # 물품 가판대/결제기 감지 (모델 지정 시)
                     if obj_detector is not None:

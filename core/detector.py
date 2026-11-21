@@ -1,6 +1,11 @@
 from ultralytics import YOLO
+from ultralytics.utils import DEFAULT_CFG_DICT
 import numpy as np
 import torch
+
+
+def fp16_predict_options():
+    return {"quantize": "fp16"} if "quantize" in DEFAULT_CFG_DICT else {"half": True}
 
 
 class HumanDetector:
@@ -36,7 +41,7 @@ class HumanDetector:
         kwargs = dict(conf=self.conf_threshold, imgsz=self.imgsz,
                       device=self.device, verbose=False)
         if self.half:
-            kwargs["half"] = True
+            kwargs.update(fp16_predict_options())
         if not self.is_pose:
             kwargs["classes"] = [0]  # 포즈 모델은 person 전용이라 classes 불필요
 
@@ -78,7 +83,7 @@ class ObjectDetector:
 
     def detect(self, frame: np.ndarray) -> list[dict]:
         """반환 형식: { 'bbox':[x1,y1,x2,y2], 'conf':float, 'cls':int, 'name':str }."""
-        precision = {"half": True} if self.half else {}
+        precision = fp16_predict_options() if self.half else {}
         results = self.model(frame, conf=self.conf_threshold, imgsz=self.imgsz,
                              device=self.device, verbose=False, **precision)
         out = []

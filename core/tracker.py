@@ -22,6 +22,10 @@ class HumanTracker:
         if embedder is not None:
             self.tracker.embedder = embedder
 
+    def warmup_live(self):
+        if torch.cuda.is_available():
+            self.tracker.embedder.predict([np.zeros((128, 64, 3), dtype=np.uint8)])
+
     def update(self, detections: list[dict], frame: np.ndarray, embeds=None) -> list[dict]:
         """
         detections: HumanDetector.detect() 결과

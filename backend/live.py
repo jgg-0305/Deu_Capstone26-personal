@@ -63,10 +63,10 @@ def open_capture(url):
     # RTSP 접속은 서버에서 지정한 TCP 전송으로 한정한다.
     os.environ.setdefault("OPENCV_FFMPEG_CAPTURE_OPTIONS", "rtsp_transport;tcp")
     os.environ.setdefault("OPENCV_FFMPEG_LOGLEVEL", "-8")
-    return cv2.VideoCapture(url, cv2.CAP_FFMPEG, [
-        cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000,
-        cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000,
-    ])
+    params = [cv2.CAP_PROP_OPEN_TIMEOUT_MSEC, 5000, cv2.CAP_PROP_READ_TIMEOUT_MSEC, 5000]
+    if hasattr(cv2, "CAP_PROP_N_THREADS"):
+        params.extend([cv2.CAP_PROP_N_THREADS, 1])
+    return cv2.VideoCapture(url, cv2.CAP_FFMPEG, params)
 
 
 def read_jpeg(capture, last_frame):

@@ -82,15 +82,19 @@ def replay(tracks, count, checkpoint):
                 vec = positions[frame][1].reshape(17, 2)
                 observed.append({'track_id': tid, 'bbox': [0, 0, 1, 1], 'observed': True})
                 points[tid] = np.column_stack((vec, np.any(vec != 0, axis=1).astype(float)))
-        predictions = buffer.update(observed, points)
+        predictions = buffer.update(observed, points, source_seconds=frame / 3)
+        states = {str(t['track_id']): buffer.progress(t['track_id'])['state'] for t in observed}
         rows.append({'frame': frame, 'seconds': frame / 3,
-                     'predictions': {str(t): [int(v[0]), float(v[1])] for t, v in predictions.items()}})
+                     'predictions': {str(t): [int(v[0]), float(v[1])] for t, v in predictions.items()},
+                     'states': states})
     return rows
 
 
 def summarize(rows, tracks, events, label):
     targets = [(match_actor(tracks, s), s[0], e[0]) for s, e in events]
     counts, pocket = Counter(), Counter()
+    visible_counts = Counter()
+    event_uncertain = event_missing = 0
     event_total = event_classified = 0
     normal_total=normal_classified=0
     normal_counts=Counter()
@@ -112,12 +116,21 @@ def summarize(rows, tracks, events, label):
                 if pred:
                     event_classified += 1
                     counts[LABELS[pred[0]]] += 1
+                    if row.get('states', {}).get(str(actor)) == 'uncertain':
+                        event_uncertain += 1
+                    else:
+                        visible_counts[LABELS[pred[0]]] += 1
+                else:
+                    event_missing += 1
         if 134 <= f <= 143:
             pocket.update(LABELS[p[0]] for p in row['predictions'].values())
     return {'event_annotated_frames': event_total, 'event_classified_frames': event_classified,
             'normal_proxy_frames':normal_total,'normal_proxy_classified_frames':normal_classified,
             'normal_proxy_predictions':dict(normal_counts),
             'event_predictions': dict(counts), 'annotated_events': targets,
+            'event_visible_predictions': dict(visible_counts),
+            'event_uncertain_frames': event_uncertain,
+            'event_missing_or_collecting_frames': event_missing,
             'pocket_44_67_to_47_67': dict(pocket),
             'whole_clip_predictions': dict(Counter(LABELS[p[0]] for r in rows for p in r['predictions'].values()))}
 

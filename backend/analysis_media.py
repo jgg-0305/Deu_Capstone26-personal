@@ -3,6 +3,7 @@
 import json
 import os
 from tempfile import NamedTemporaryFile
+from time import sleep
 
 from backend.samples import UPLOAD_DIR
 
@@ -21,15 +22,33 @@ def replace_frame(camera_id, kind, data):
         try:
             output.write(data)
             output.close()
-            os.replace(temp, path)
+            # Windows can deny replacement while a reader briefly has the
+            # previous snapshot open, including a reader in the worker process.
+            for delay in (.01, .02, .04, .08, .16):
+                try:
+                    os.replace(temp, path)
+                    break
+                except PermissionError:
+                    if os.name != "nt":
+                        raise
+                    sleep(delay)
+            else:
+                os.replace(temp, path)
         finally:
             if os.path.exists(temp):
                 os.unlink(temp)
 
 
 def read_snapshot(camera_id, run_id):
-    try:
-        snapshot = json.loads(frame_path(camera_id, "analysis.json").read_bytes())
-    except (FileNotFoundError, ValueError):
-        return None
-    return snapshot if snapshot["run_id"] == str(run_id) else None
+    path = frame_path(camera_id, "analysis.json")
+    for delay in (.01, .02, .04):
+        try:
+            snapshot = json.loads(path.read_bytes())
+            return snapshot if snapshot["run_id"] == str(run_id) else None
+        except (FileNotFoundError, ValueError):
+            return None
+        except PermissionError:
+            if os.name != "nt":
+                raise
+            sleep(delay)
+    return None

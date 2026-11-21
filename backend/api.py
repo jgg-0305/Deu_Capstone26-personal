@@ -174,14 +174,14 @@ class RegisterInput(LoginInput):
 BehaviorModel = Annotated[str, StringConstraints(
     pattern=r"^(behavior|behavior_kpt_v1|behavior_rgb|upload_[0-9a-f]{64})$"
 )]
-PoseModel = Literal["human_pose", "human_pose_s"]
+PoseModel = Literal["human_pose", "human_pose_s", "human_pose_m"]
 
 
 class AnalysisInput(Input):
     behavior_model: BehaviorModel = "behavior"
     pose_model: PoseModel = "human_pose"
-    threshold: float = Field(default=0.5, ge=0.5, le=1)
-    event_threshold: float = Field(default=0.6, ge=0.5, le=1)
+    threshold: float = Field(default=0.9, ge=0.5, le=1)
+    event_threshold: float = Field(default=0.9, ge=0.5, le=1)
     resolution: int = 480
     detection_interval: int = Field(default=1, ge=1, le=3)
     detection_confidence: float = Field(default=0.4, ge=0.1, le=0.95)
@@ -193,6 +193,23 @@ class AnalysisInput(Input):
         if value not in (384, 480, 640):
             raise ValueError("처리 해상도는 384, 480, 640 중 하나여야 합니다.")
         return value
+
+
+def analysis_defaults():
+    pose = os.getenv("CCTV_DEFAULT_POSE_MODEL")
+    behavior = os.getenv("CCTV_DEFAULT_BEHAVIOR_MODEL")
+    overrides = {}
+    if pose:
+        overrides["pose_model"] = pose
+        if pose == "human_pose_m":
+            overrides["detection_confidence"] = .6
+    if behavior:
+        overrides["behavior_model"] = behavior
+    return AnalysisInput(**overrides)
+
+
+def retired_models():
+    return [name.strip() for name in os.getenv("CCTV_RETIRED_MODELS", "").split(",") if name.strip()]
 
 
 class WebcamInput(Input):
@@ -217,14 +234,15 @@ class RunInput(Input):
     worker_id: ShortText
     models: dict[ModelRole, UUID]
     rule_version: ShortText
+    article_rule_version: ShortText | None = None
     job_id: UUID | None = None
     claim_token: UUID | None = None
     resolution: Literal[384, 480, 640] = 480
     detection_interval: int = Field(default=1, ge=1, le=60)
     detection_confidence: float = Field(default=0.4, ge=0.1, le=0.95)
     max_age: int = Field(default=30, ge=1, le=120)
-    behavior_threshold: float = Field(default=0.5, ge=0.5, le=1)
-    event_threshold: float = Field(default=0.6, ge=0.5, le=1)
+    behavior_threshold: float = Field(default=0.9, ge=0.5, le=1)
+    event_threshold: float = Field(default=0.9, ge=0.5, le=1)
     alert_threshold: float = Field(default=0.9, ge=0.5, le=1)
 
     @model_validator(mode="after")
@@ -246,7 +264,7 @@ class RunFinish(Lease):
 
 
 class RuleEvidence(Input):
-    reason: Literal["pos_timeout", "track_lost"]
+    reason: Literal["pos_timeout", "track_lost", "article_disappeared_near_hip", "article_disappeared_inside_bag"]
     stand_contact_ms: int | None = Field(default=None, ge=0, le=2**63 - 1)
 
 
@@ -278,6 +296,13 @@ class EventInput(Lease):
             raise ValueError("Rule events require a rule code and version")
         if self.detection_method == "model" and (self.rule_code or self.rule_version or self.evidence):
             raise ValueError("Model-only events cannot carry rule evidence")
+        article_reason = bool(self.evidence and self.evidence.reason in {
+            "article_disappeared_near_hip", "article_disappeared_inside_bag",
+        })
+        if self.rule_code == "article_trajectory" or article_reason:
+            if (self.rule_code != "article_trajectory" or not article_reason
+                    or self.event_type != "theft_suspected" or self.detection_method != "rule"):
+                raise ValueError("Article trajectory evidence requires a theft suspicion rule event")
         if self.source_end_time_ms is not None and (
             self.source_time_ms is None or self.source_end_time_ms < self.source_time_ms
         ):
@@ -302,7 +327,7 @@ def live():
 @app.get("/health/ready")
 def ready(db: Db):
     if db.execute("SELECT 1 FROM schema_migrations WHERE name = %s",
-                  ("008_behavior_uploads.sql",)).fetchone() is None:
+                  ("009_worker_presence.sql",)).fetchone() is None:
         raise HTTPException(503, "Database migration is required")
     return {"status": "ready"}
 
@@ -380,13 +405,17 @@ def logout(user: User, db: Db):
 
 
 def enqueue(db, camera_id, settings):
+    default = analysis_defaults()
+    settings = AnalysisInput(**(default.model_dump() | settings.model_dump(exclude_unset=True)))
+    if {settings.pose_model, settings.behavior_model}.intersection(retired_models()):
+        raise HTTPException(409, "운영에서 제외된 모델입니다. 기본 모델을 선택하세요.")
     if db.execute("""
         SELECT 1 FROM model_artifacts a JOIN cameras c ON c.id = %s
         WHERE a.role = 'behavior' AND a.name = %s
-          AND (a.name IN ('behavior', 'behavior_kpt_v1', 'behavior_rgb') OR EXISTS (
+          AND (a.name IN ('behavior', 'behavior_kpt_v1', 'behavior_rgb') OR a.name = %s OR EXISTS (
               SELECT 1 FROM behavior_uploads u WHERE u.artifact_id = a.id AND u.owner_id = c.owner_id
           ))
-    """, (camera_id, settings.behavior_model)).fetchone() is None:
+    """, (camera_id, settings.behavior_model, default.behavior_model)).fetchone() is None:
         raise HTTPException(409, "선택한 행동 모델을 사용할 수 없습니다. 파일을 첨부하거나 기본 모델을 선택하세요.")
     if db.execute("SELECT 1 FROM model_artifacts WHERE role = 'pose' AND name = %s",
                   (settings.pose_model,)).fetchone() is None:
@@ -431,15 +460,16 @@ async def upload_camera(request: Request, user: Owner, db: Db,
                         name: ShortText, filename: Annotated[str, Query(min_length=5, max_length=255)],
                         resolution: Literal["384", "480", "640"] = "480",
                         detection_interval: Annotated[int, Query(ge=1, le=3)] = 1,
-                        behavior_model: BehaviorModel = "behavior",
-                        pose_model: PoseModel = "human_pose",
-                        detection_confidence: Annotated[float, Query(ge=0.1, le=0.95)] = 0.4,
+                        behavior_model: BehaviorModel | None = None,
+                        pose_model: PoseModel | None = None,
+                        detection_confidence: Annotated[float, Query(ge=0.1, le=0.95)] | None = None,
                         max_age: Annotated[int, Query(ge=1, le=120)] = 30,
-                        threshold: Annotated[float, Query(ge=0.5, le=1)] = 0.5,
-                        event_threshold: Annotated[float, Query(ge=0.5, le=1)] = 0.6):
+                        threshold: Annotated[float, Query(ge=0.5, le=1)] = 0.9,
+                        event_threshold: Annotated[float, Query(ge=0.5, le=1)] = 0.9):
+    models = {key: value for key, value in (("behavior_model", behavior_model), ("pose_model", pose_model),
+                                            ("detection_confidence", detection_confidence)) if value is not None}
     settings = AnalysisInput(resolution=int(resolution), detection_interval=detection_interval,
-                             behavior_model=behavior_model, pose_model=pose_model, event_threshold=event_threshold,
-                             detection_confidence=detection_confidence, max_age=max_age, threshold=threshold)
+                             event_threshold=event_threshold, max_age=max_age, threshold=threshold, **models)
     filename = filename.replace(chr(92), "/").rsplit("/", 1)[-1]
     if not filename.lower().endswith(".mp4") or any(ord(char) < 32 for char in filename):
         raise HTTPException(415, "압축을 푼 MP4 영상 파일을 선택하세요.")
@@ -657,6 +687,10 @@ def cameras(user: User, db: Db, limit: Annotated[int, Query(ge=1, le=100)] = 50)
                          AND r.lease_expires_at <= now() THEN 'failed'
                     ELSE COALESCE(r.status, 'idle') END AS status,
                r.id AS run_id, r.behavior_model, r.pose_model, r.config_snapshot, r.error_code,
+               CASE WHEN j.status = 'queued' THEN EXISTS (
+                   SELECT 1 FROM analysis_worker_presence
+                   WHERE last_seen_at > now() - interval '10 seconds'
+               ) END AS worker_connected,
                r.behavior_filename, r.behavior_sha256,
                video.id AS media_id, COALESCE(r.event_count, 0) AS event_count
         FROM cameras c
@@ -689,8 +723,14 @@ def cameras(user: User, db: Db, limit: Annotated[int, Query(ge=1, le=100)] = 50)
 
 def expire_jobs(db, camera_id=None):
     db.execute("""
-        UPDATE analysis_jobs j SET status = 'failed', claim_token = NULL, claim_expires_at = NULL
-        WHERE j.status = 'claimed' AND (%s::uuid IS NULL OR j.camera_id = %s)
+        UPDATE analysis_jobs j
+        SET status = CASE WHEN c.source_type = 'rtsp' AND c.is_enabled AND c.deleted_at IS NULL
+                          THEN 'queued' ELSE 'failed' END,
+            run_id = CASE WHEN c.source_type = 'rtsp' AND c.is_enabled AND c.deleted_at IS NULL
+                          THEN NULL ELSE j.run_id END,
+            claim_token = NULL, claim_expires_at = NULL
+        FROM cameras c
+        WHERE c.id = j.camera_id AND j.status = 'claimed' AND (%s::uuid IS NULL OR j.camera_id = %s)
           AND ((j.run_id IS NULL AND j.claim_expires_at <= clock_timestamp()) OR EXISTS (
               SELECT 1 FROM inference_runs r WHERE r.id = j.run_id
                 AND r.lease_expires_at <= clock_timestamp()
@@ -715,18 +755,26 @@ def queue_analysis(camera_id: UUID, data: AnalysisInput, user: Owner, db: Db):
 
 @app.get("/api/v1/models")
 def models(user: User, db: Db):
+    default = analysis_defaults()
     return db.execute("""
         SELECT a.id, a.role, a.name, a.version, a.sha256, a.labels, a.preprocessing,
-               COALESCE(u.filename, regexp_replace(a.storage_key, '^.*/', '')) AS filename,
+               COALESCE(u.filename, CASE WHEN a.name = %s THEN
+                   (SELECT filename FROM behavior_uploads WHERE artifact_id = a.id ORDER BY filename LIMIT 1)
+               END, regexp_replace(a.storage_key, '^.*/', '')) AS filename,
+               a.name = ANY(%s) AS is_default,
                CASE WHEN left(a.name, 7) <> 'upload_' THEN a.storage_key END AS storage_key
         FROM model_artifacts a
         LEFT JOIN behavior_uploads u ON u.artifact_id = a.id AND u.owner_id = %s
-        WHERE left(a.name, 7) <> 'upload_' OR u.owner_id IS NOT NULL
+        WHERE (left(a.name, 7) <> 'upload_' OR u.owner_id IS NOT NULL OR a.name = %s)
+          AND a.name <> ALL(%s)
         ORDER BY a.role, a.created_at DESC
-    """, (user["id"],)).fetchall()
+    """, (default.behavior_model,
+          [value for value in (os.getenv("CCTV_DEFAULT_BEHAVIOR_MODEL"), os.getenv("CCTV_DEFAULT_POSE_MODEL")) if value],
+          user["id"], default.behavior_model, retired_models())).fetchall()
 
 
 def register_behavior_upload(db, owner_id, filename, temp, size, digest, architecture):
+    from backend.behavior_upload import HAND_FUSION_FEATURES, HAND_FUSION_NAME
     from core.labels import BEHAVIOR_LABELS
 
     # 같은 해시를 동시에 첨부해도 모델을 한 번만 저장한다.
@@ -743,7 +791,8 @@ def register_behavior_upload(db, owner_id, filename, temp, size, digest, archite
                 VALUES ('behavior', %s, 'upload', %s, %s, %s, %s, %s) RETURNING id, role, name
             """, (UPLOAD_PREFIX + digest, digest, path.name, size,
                   Jsonb({i: label[1].lower() for i, label in enumerate(BEHAVIOR_LABELS)}),
-                  Jsonb({"architecture": architecture, "input_shape": [1, 30, 34]}))).fetchone()
+                  Jsonb({"architecture": architecture, "input_shape": [
+                      1, 30, HAND_FUSION_FEATURES if architecture == HAND_FUSION_NAME else 34]}))).fetchone()
         if artifact["role"] != "behavior":
             raise HTTPException(415, "이 파일은 행동 분류 가중치가 아닙니다.")
         if not artifact["name"].startswith(UPLOAD_PREFIX):
@@ -753,7 +802,7 @@ def register_behavior_upload(db, owner_id, filename, temp, size, digest, archite
             created_file = True
         db.execute("""
             INSERT INTO behavior_uploads (owner_id, artifact_id, filename) VALUES (%s, %s, %s)
-            ON CONFLICT (owner_id, artifact_id) DO NOTHING
+            ON CONFLICT (owner_id, artifact_id) DO UPDATE SET filename = EXCLUDED.filename
         """, (owner_id, artifact["id"], filename))
         db.commit()
     except Exception:
@@ -802,7 +851,7 @@ async def upload_behavior_model(request: Request, user: Owner, db: Db,
                 capture_output=True, text=True, timeout=20, check=True,
             ), limiter=MODEL_VALIDATION_LIMITER)
         except (subprocess.SubprocessError, OSError):
-            raise HTTPException(415, "원본 GUI와 호환되는 KeypointLSTM v1/v2의 8개 클래스 .pth 가중치를 선택하세요.") from None
+            raise HTTPException(415, "지원되는 8개 클래스 관절 또는 손 영상 융합 .pth 가중치를 선택하세요.") from None
         return await anyio.to_thread.run_sync(
             register_behavior_upload, db, user["id"], filename, temp, size, digest.hexdigest(), result.stdout.strip()
         )
@@ -834,6 +883,8 @@ def events(user: User, db: Db, camera_id: UUID | None = None,
                e.detection_method, e.model_score, e.score_model_role, e.rule_code,
                e.rule_version, e.evidence, e.detected_at, e.occurred_at, e.source_time_ms,
                e.source_frame_index, e.source_end_time_ms, review.decision,
+               r.config_snapshot->'behavior_threshold' AS behavior_threshold,
+               r.config_snapshot->'event_threshold' AS event_threshold,
                (SELECT id FROM media_assets WHERE run_id = r.id
                 AND kind = 'source' AND status = 'ready') AS media_id
         FROM detection_events e
@@ -922,6 +973,14 @@ def worker_models(authorized: Worker, db: Db):
         SELECT id, role, name, sha256 FROM model_artifacts
         ORDER BY role, name
     """).fetchall()
+
+
+@app.post("/internal/v1/worker/heartbeat", status_code=204)
+def worker_heartbeat(authorized: Worker, db: Db):
+    db.execute("""
+        INSERT INTO analysis_worker_presence (singleton, last_seen_at) VALUES (true, clock_timestamp())
+        ON CONFLICT (singleton) DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
+    """)
 
 
 @app.post("/internal/v1/jobs/claim")
@@ -1043,8 +1102,10 @@ def save_snapshot(run_id: UUID, data: SnapshotInput, authorized: Worker, db: Db)
         raise HTTPException(413, "분석 미리보기가 너무 큽니다.")
     replace_frame(run["camera_id"], "analysis.json", payload)
     if data.timeline:
+        entry = {**data.snapshot, "run_id": str(run_id)}
+        entry.pop("image", None)
         with frame_path(run_id, "timeline.jsonl").open("ab") as output:
-            output.write(payload + b"\n")
+            output.write(json.dumps(entry, allow_nan=False).encode() + b"\n")
     return Response(status_code=204)
 
 
@@ -1088,8 +1149,10 @@ def ingest(run_id: UUID, data: EventInput, authorized: Worker, db: Db, response:
         return {"id": existing["id"]}
     if run["status"] != "running" or not run["lease_valid"]:
         raise HTTPException(409, "Run lease is no longer active")
-    if data.detection_method != "model" and data.rule_version != run["config_snapshot"]["rule_version"]:
-        raise HTTPException(422, "Rule version differs from the run configuration")
+    if data.detection_method != "model":
+        field = "article_rule_version" if data.rule_code == "article_trajectory" else "rule_version"
+        if data.rule_version != run["config_snapshot"].get(field):
+            raise HTTPException(422, "Rule version differs from the run configuration")
     try:
         event = db.execute("""
             INSERT INTO detection_events (
