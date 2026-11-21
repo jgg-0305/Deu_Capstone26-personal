@@ -330,9 +330,32 @@ npm.cmd --prefix frontend run build
 ```
 
 macOS Terminal:
+ db서버 실행 
+ 
+/private/tmp/deu-postgres-phase1/package/native/bin/pg_ctl \
+  -D .local-db/data \
+  -l .local-db/postgres.log \
+  -o "-c listen_addresses= -k /private/tmp/deu-cctv-local-db -p 55432 -c unix_socket_permissions=0700" \
+  start
+
+source .local-db/web.env
+
+
+python -m backend.manage migrate
+
+
+
+source .venv-web/bin/activate
+set -a
+source .local-db/web.env
+set +a
+python -c 'import os; print("CCTV_DATABASE_URL:", "설정됨" if os.environ.get("CCTV_DATABASE_URL") else "없음")'
+python -m backend.manage migrate
+python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
 
 ```bash
 source .venv-web/bin/activate
+python -c 'import os; print("CCTV_DATABASE_URL:", "설정됨" if os.environ.get("CCTV_DATABASE_URL") else "없음")'
 if [ -f .local-db/web.env ]; then source .local-db/web.env; fi
 python -m backend.manage migrate
 npm --prefix frontend run build
