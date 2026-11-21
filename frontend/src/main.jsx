@@ -183,7 +183,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
   const snapshots = useSnapshots(sources, api);
   const chosen = all.find((source) => source.id === selection) ?? all[0];
   const configured = configuredSettings(models);
-  const newSourceSettings = configured || settings;
+  const newSourceSettings = settings;
 
   const cascade = layout === "cascade" && all.length > 1;
   const media = navigator.mediaDevices;
@@ -340,16 +340,16 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
     } catch (error) { onError(error); }
     finally { setPending(false); }
   }
-  async function attachBehavior(event) {
+  async function attachModel(event, role) {
     const input = event.currentTarget;
     const file = input.files[0];
     if (!file) return;
     setPending(true);
     try {
-      const model = await api("/models/behavior/upload?" + new URLSearchParams({ filename: file.name }), file);
+      const model = await api("/models/" + role + "/upload?" + new URLSearchParams({ filename: file.name }), file);
       await refreshModels();
-      setSettings((old) => ({ ...old, behavior_model: model.name }));
-      setAttachedBehavior({ name: model.name, filename: file.name });
+      setSettings((old) => ({ ...old, [role + "_model"]: model.name }));
+      if (role === "behavior") setAttachedBehavior({ name: model.name, filename: file.name });
       notify(`${file.name}을 선택했습니다. 기존 영상에 적용하려면 다시 분석을 누르세요.`);
     } catch (error) { onError(error); }
     finally { input.value = ""; setPending(false); }
@@ -416,7 +416,9 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
               sourceMode === "webcam" ? "웹캠 연결" : sourceMode === "rtsp" ? "CCTV 연결" : "영상 등록 및 테스트"}</button>
           </form>
         </section>
-        <AnalysisSettings {...{ settings, setSettings, models, chosen, pending, attachedBehavior }} apply={analyze} attachBehavior={canWrite ? attachBehavior : null} />
+        <AnalysisSettings {...{ settings, setSettings, models, chosen, pending, attachedBehavior }} apply={analyze}
+          attachBehavior={canWrite ? (event) => attachModel(event, "behavior") : null}
+          attachPose={canWrite ? (event) => attachModel(event, "pose") : null} />
         <DisplaySettings {...{ display, setDisplay }} />
       </>}
       <AnalysisStats {...{ sources, snapshots }} />

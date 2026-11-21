@@ -24,6 +24,7 @@ from backend.behavior_upload import MAX_MODEL_BYTES, MODEL_DIR, UPLOAD_PREFIX, b
 from backend.db import DatabaseConfigurationError, connect
 from backend.live import BOUNDARY, frames, public_rtsp_url, resolve_camera
 from backend.passwords import hasher, test_admin_enabled, verify_password
+from backend.pose_upload import pose_artifacts, register_pose_upload
 from backend.samples import MAX_VIDEO_BYTES, ROOT, UPLOAD_DIR, asset_path, source_path
 from backend.storage import cleanup_camera, inventory, prepare_purge
 
@@ -810,6 +811,40 @@ def register_behavior_upload(db, owner_id, filename, temp, size, digest, archite
             path.unlink(missing_ok=True)
         raise
     return {"name": artifact["name"], "sha256": digest}
+
+
+@app.post("/api/v1/models/pose/upload", status_code=201)
+async def upload_pose_model(request: Request, user: Owner, db: Db,
+                            filename: Annotated[str, Query(min_length=4, max_length=255)]):
+    if not filename.lower().endswith(".pt"):
+        raise HTTPException(415, "YOLO 포즈 모델의 .pt 파일을 선택하세요.")
+    artifacts = pose_artifacts()
+    max_bytes = max(model["bytes"] for model in artifacts.values())
+    content_length = request.headers.get("content-length", "")
+    if content_length.isdecimal() and int(content_length) > max_bytes:
+        raise HTTPException(413, "지원하는 YOLO11 포즈 모델보다 큰 파일입니다.")
+    if MODEL_DIR.is_symlink():
+        raise HTTPException(503, "모델 저장소를 사용할 수 없습니다.")
+    MODEL_DIR.mkdir(mode=0o700, exist_ok=True)
+    temp = MODEL_DIR / f"{uuid4()}.part"
+    size = 0
+    digest = hashlib.sha256()
+    try:
+        async with await anyio.open_file(temp, "xb") as output:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > max_bytes:
+                    raise HTTPException(413, "지원하는 YOLO11 포즈 모델보다 큰 파일입니다.")
+                digest.update(chunk)
+                await output.write(chunk)
+        artifact = artifacts.get(digest.hexdigest())
+        if artifact is None or size != artifact["bytes"]:
+            raise HTTPException(415, "프로젝트에서 검증한 YOLO11n/s/m Pose의 .pt 파일을 선택하세요.")
+        if artifact["id"] in retired_models():
+            raise HTTPException(409, "운영에서 제외된 모델입니다.")
+        return await anyio.to_thread.run_sync(register_pose_upload, db, artifact, temp)
+    finally:
+        temp.unlink(missing_ok=True)
 
 
 @app.post("/api/v1/models/behavior/upload", status_code=201)

@@ -24,6 +24,7 @@ import torch
 from backend.analysis_media import frame_path
 from backend.behavior_upload import MODEL_DIR, UPLOAD_PREFIX
 from backend.live import open_capture
+from backend.pose_upload import uploaded_pose_path
 from backend.samples import ROOT, source_path
 from core.detector import HumanDetector, ObjectDetector
 from core.article_tracking import ArticleDetector, ArticleSmokingGate, ArticleTracker, SmokingMotionEvidence, applicable_article_evidence
@@ -90,6 +91,10 @@ class SourceError(RuntimeError):
     """카메라 주소를 담지 않는 영상 입력 오류."""
 
 
+class ModelError(RuntimeError):
+    """실행 로그에 기록할 수 있는 모델 검증 오류."""
+
+
 class WorkerError(RuntimeError):
     def __init__(self, path, status):
         self.status = status
@@ -127,27 +132,33 @@ def verified_models(api, behavior_model, pose_model="human_pose"):
         if role is None:
             continue
         path = ROOT / artifact["path"]
+        if role == "pose":
+            uploaded = uploaded_pose_path(artifact)
+            if not MODEL_DIR.is_symlink() and not uploaded.is_symlink() and uploaded.is_file():
+                path = uploaded
+        if not path.is_file():
+            raise ModelError(f"{artifact['id']} 모델 파일이 없습니다. 모델을 다시 첨부하거나 설치하세요.")
         stat = path.stat()
         digest = model_digest(path, stat.st_size, stat.st_mtime_ns)
         model = registered.get((artifact["id"], digest))
         if digest != artifact["sha256"] or model is None or model["role"] != role:
-            raise RuntimeError(f"{role} 모델을 확인할 수 없습니다. 모델을 다시 등록하세요.")
+            raise ModelError(f"{artifact['id']} 모델의 해시 또는 등록 정보가 일치하지 않습니다.")
         paths[role], ids[role] = str(path), model["id"]
     if behavior_model.startswith(UPLOAD_PREFIX):
         digest = behavior_model.removeprefix(UPLOAD_PREFIX)
         model = registered.get((behavior_model, digest))
         if (len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest)
                 or model is None or model["role"] != "behavior"):
-            raise RuntimeError("첨부한 행동 모델이 등록되어 있지 않습니다.")
+            raise ModelError("첨부한 행동 모델이 등록되어 있지 않습니다.")
         path = MODEL_DIR / f"{digest}.pth"
         if MODEL_DIR.is_symlink() or path.is_symlink() or not path.is_file():
-            raise RuntimeError("첨부한 행동 모델 파일을 찾을 수 없습니다.")
+            raise ModelError("첨부한 행동 모델 파일을 찾을 수 없습니다.")
         stat = path.stat()
         if model_digest(path, stat.st_size, stat.st_mtime_ns) != digest:
-            raise RuntimeError("첨부한 행동 가중치의 해시가 일치하지 않습니다.")
+            raise ModelError("첨부한 행동 가중치의 해시가 일치하지 않습니다.")
         paths["behavior"], ids["behavior"] = str(path), model["id"]
     if paths.keys() != {"pose", "object", "behavior"}:
-        raise RuntimeError("분석에 필요한 모델이 목록에 없습니다.")
+        raise ModelError("분석에 필요한 모델이 목록에 없습니다.")
     return paths, ids
 
 
@@ -674,8 +685,22 @@ def run_job(args, token, job):
         except (WorkerError, requests.RequestException):
             pass
         # 연결 주소나 인증 정보가 들어갈 수 있는 외부 라이브러리 오류는 기록하지 않는다.
-        detail = str(error) if isinstance(error, (SourceError, WorkerError)) else type(error).__name__
+        detail = str(error) if isinstance(error, (ModelError, SourceError, WorkerError)) else type(error).__name__
         print(f"분석 {job['id']} 실패: {detail}", flush=True)
+    finally:
+        api.session.close()
+
+
+def report_presence(url, token):
+    # 작업 요청이나 DB 잠금 대기가 워커 연결 신호를 막지 않도록 독립 연결을 사용한다.
+    api = WorkerClient(url, token)
+    try:
+        while not STOP.is_set():
+            try:
+                api.request("POST", "/worker/heartbeat")
+            except (WorkerError, requests.RequestException) as error:
+                print(f"분석 워커 연결 실패: {error}", flush=True)
+            STOP.wait(3)
     finally:
         api.session.close()
 
@@ -683,18 +708,11 @@ def run_job(args, token, job):
 def serve(api, args, token):
     running = {"file": [], "live": []}
     executor = ThreadPoolExecutor(max_workers=1 + args.live_slots)
-    next_heartbeat = 0
+    presence = Thread(target=report_presence, args=(args.api_url, token), daemon=True)
+    presence.start()
     try:
         print("관제실 영상 분석 요청을 기다립니다.", flush=True)
         while not STOP.is_set():
-            if time.monotonic() >= next_heartbeat:
-                try:
-                    api.request("POST", "/worker/heartbeat")
-                except (WorkerError, requests.RequestException) as error:
-                    print(f"분석 워커 연결 실패: {error}", flush=True)
-                    STOP.wait(2)
-                    continue
-                next_heartbeat = time.monotonic() + 3
             for kind, limit in (("file", 1), ("live", args.live_slots)):
                 running[kind] = [job for job in running[kind] if not job.done()]
                 if len(running[kind]) < limit:

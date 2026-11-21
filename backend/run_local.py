@@ -20,7 +20,7 @@ def main():
     if not (ROOT / "frontend/dist/index.html").is_file():
         parser.error("Build the frontend with npm --prefix frontend run build.")
     migrate()
-    register_models()
+    register_models(allow_retrained_behavior=True)
     env = os.environ.copy()
     env.setdefault("CCTV_WORKER_TOKEN", secrets.token_urlsafe(32))
     if len(env["CCTV_WORKER_TOKEN"]) < 32:

@@ -168,7 +168,7 @@ export function ModelStatus({ source, snapshot }) {
   if (source.status === "failed") message = failures[source.error_code] || "분석에 실패했습니다. 워커 실행 상태와 등록된 모델을 확인하세요.";
   else if (source.status === "queued") message = source.worker_connected
     ? "분석 대기열에 등록됨 · 작업 슬롯을 기다리는 중"
-    : "분석 워커 연결 끊김 · 워커에 연결되면 분석을 시작합니다.";
+    : "분석 워커 연결 없음 · 실행 터미널에서 워커 시작 상태를 확인하세요.";
   else if (source.status === "starting") message = "모델 파일 확인 중";
   else if (snapshot?.unavailable) message = "분석 상태를 조회할 수 없습니다. 서버 연결을 확인하세요.";
   else if (!snapshot || snapshot.run_id !== source.run_id) message = running ? "워커 연결됨 · 모델 준비 중" : "분석 기록 없음";
@@ -194,7 +194,8 @@ export function ModelStatus({ source, snapshot }) {
           : snapshot.frame_duration_ms > 0
             ? ` · 분류 입력 ${(snapshot.frame_duration_ms * 30 / 1000).toFixed(1)}초` : "")}
     </span>}
-    {source.pose_model && <span>{modelNames[source.pose_model]} · {modelNames[source.behavior_model] || source.behavior_filename}</span>}
+    {source.pose_model && !["queued", "starting"].includes(source.status) &&
+      <span>{modelNames[source.pose_model]} · {modelNames[source.behavior_model] || source.behavior_filename}</span>}
   </div>;
 }
 
@@ -263,6 +264,7 @@ export function FileAnalysis({ source, display, enabled, onError }) {
     <div className="playback-status">
       <span>{!enabled ? "원본 영상" :
         current ? `AI 분석 · 영상 ${(time / 1000).toFixed(1)}초 · 행동 추론 ${current.inference_count ?? 0}회` :
+        !run && running ? "분석 시작 대기 중" :
         running ? "이 재생 시점의 추적 결과 처리 중" : "이 시점의 추적 결과 없음"}</span>
       {timelineError && <span role="alert">{timelineError}</span>}
       {enabled && current && <span className="playback-results">{current.people.length ? current.people.map((person) =>
@@ -271,7 +273,7 @@ export function FileAnalysis({ source, display, enabled, onError }) {
   </div>;
 }
 
-export function AnalysisSettings({ settings, setSettings, models, chosen, apply, pending, attachBehavior, attachedBehavior }) {
+export function AnalysisSettings({ settings, setSettings, models, chosen, apply, pending, attachBehavior, attachedBehavior, attachPose }) {
   const update = (event) => {
     const { name, value } = event.target;
     setSettings({ ...settings, [name]: ["behavior_model", "pose_model"].includes(name) ? value : Number(value) });
@@ -294,9 +296,14 @@ export function AnalysisSettings({ settings, setSettings, models, chosen, apply,
     {!configured && !demoAvailable && <p className="muted">YOLO11s를 설치하고 모델을 등록하면 데모 설정을 선택할 수 있습니다.</p>}
     <form onSubmit={apply}>
       <label htmlFor="pose-model">사람·관절 검출 모델</label>
-      <select id="pose-model" name="pose_model" value={settings.pose_model} onChange={update}>
+      <select id="pose-model" name="pose_model" value={settings.pose_model} onChange={update} disabled={pending}>
         {poseModels.map((model) => <option key={model.id} value={model.name}>{modelNames[model.name]}</option>)}
       </select>
+      {attachPose && <>
+        <label htmlFor="pose-file">YOLO 포즈 모델 파일 첨부 (.pt)</label>
+        <input id="pose-file" type="file" accept=".pt" disabled={pending} onChange={attachPose} />
+        <p className="muted">프로젝트에서 검증한 YOLO11n/s/m Pose 가중치를 선택하세요.</p>
+      </>}
       <label htmlFor="behavior-model">이상행동 판별 모델</label>
       <select id="behavior-model" name="behavior_model" value={settings.behavior_model} onChange={update} disabled={pending}>
         {behaviorModels.map((model) => <option key={model.id} value={model.name}>

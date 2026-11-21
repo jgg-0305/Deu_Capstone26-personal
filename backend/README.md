@@ -67,6 +67,13 @@ python -m backend.worker --serve
 
 로컬에서는 PostgreSQL 연결과 프런트엔드 빌드를 준비한 뒤 `python -m backend.run_local`로 API와 분석 워커를 함께 실행할 수 있다. 이 명령은 마이그레이션과 모델 등록을 적용하고, 워커가 종료되면 다시 시작한다.
 
+macOS와 Windows 모두 모델 설정의 **YOLO 포즈 모델 파일 첨부 (.pt)**에서 프로젝트가 검증한 YOLO11n/s/m Pose 파일을 등록할 수 있다. 첨부 후 모델이 선택되며, 기존 영상에는 **다시 분석**으로 적용한다. 일반 객체 검출용 `yolo11m.pt`와 등록 목록에 없는 가중치는 지원하지 않는다.
+
+포트에 기존 Uvicorn이 실행 중이면 실행 터미널에서 `Ctrl+C`로 종료한 뒤 API와 워커를 함께 시작한다. 단독 Uvicorn을 유지할 때는 동일 DB 환경과 워커 토큰을 적용한 별도 터미널에서 워커를 실행한다.
+
+- macOS: `source .venv-web/bin/activate` 후 `python -m backend.run_local`
+- Windows PowerShell: `& .\.venv-web\Scripts\python.exe -m backend.run_local`
+
 관제 화면의 기본 입력은 IP 카메라(RTSP)다. 승인된 주소를 등록하면 브라우저가 닫혀도 서버에서 추적과 행동 감지를 계속한다. 카메라가 끊기면 워커가 같은 요청에서 다시 연결한다. CCTV가 없는 환경에서는 **영상으로 CCTV 테스트**로 MP4를 등록할 수 있다. 워커는 영상 시간에 맞춰 분석하고, **AI 분석**은 처리 중인 프레임과 해당 프레임의 추적 결과를 함께 보여준다. **원본**에서는 일반 영상 재생기를 사용할 수 있다.
 
 1. 브라우저에서 [영상 관제](http://127.0.0.1:8000/)를 열고 회원가입 후 로그인한다. 로컬 테스트 관리자로 접속할 때는 아이디와 비밀번호에 각각 `admin`을 입력한다.
@@ -357,15 +364,27 @@ python -m backend.manage migrate
 
 
 
+# DB가 실행 중이면 먼저 중지
+/private/tmp/deu-postgres-phase1/package/native/bin/pg_ctl \
+  -D .local-db/data stop
+
+# localhost의 TCP 55432 포트로 실행
+/private/tmp/deu-postgres-phase1/package/native/bin/pg_ctl \
+  -D .local-db/data \
+  -l .local-db/postgres.log \
+  -o "-c listen_addresses=127.0.0.1 -k /private/tmp/deu-cctv-local-db -p 55432 -c unix_socket_permissions=0700" \
+  start
+
+
+"$(brew --prefix postgresql@18)/bin/pg_ctl" -D .local-db/data -l .local-db/postgres.log -o "-c listen_addresses=127.0.0.1 -k /private/tmp/deu-cctv-local-db -p 55432 -c unix_socket_permissions=0700" start
 source .venv-web/bin/activate
-set -a
 source .local-db/web.env
-set +a
-python -c 'import os; print("CCTV_DATABASE_URL:", "설정됨" if os.environ.get("CCTV_DATABASE_URL") else "없음")'
 python -m backend.manage migrate
-python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
+
+
 
 ```bash
+export CCTV_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:5432/cctv'
 source .venv-web/bin/activate
 python -c 'import os; print("CCTV_DATABASE_URL:", "설정됨" if os.environ.get("CCTV_DATABASE_URL") else "없음")'
 if [ -f .local-db/web.env ]; then source .local-db/web.env; fi

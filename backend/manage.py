@@ -50,7 +50,7 @@ def migrate():
             db.execute("INSERT INTO schema_migrations VALUES (%s, %s)", (path.name, digest))
 
 
-def register_models():
+def register_models(*, allow_retrained_behavior=False):
     manifest = json.loads((ROOT / "docs/design/model-manifest.json").read_text())
     roles = {"human_pose": "pose", "human_pose_s": "pose", "human_pose_m": "pose", "store_objects": "object", "behavior": "behavior",
              "behavior_kpt_v1": "behavior", "behavior_rgb": "behavior"}
@@ -63,6 +63,9 @@ def register_models():
             with path.open("rb") as model_file:
                 digest = hashlib.file_digest(model_file, "sha256").hexdigest()
             if digest != artifact["sha256"] or path.stat().st_size != artifact["bytes"]:
+                if allow_retrained_behavior and artifact["id"] == "behavior":
+                    print(f"기본 행동 모델 해시가 다릅니다: {artifact['path']}. 재학습 모델을 웹에서 첨부해 선택하세요.")
+                    continue
                 raise RuntimeError(f"Model differs from manifest: {artifact['path']}")
             row = db.execute("""
                 INSERT INTO model_artifacts
