@@ -116,6 +116,23 @@ class StorageCleanupTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(self.client.get('/api/v1/events').json()), 1)
 
+    def test_article_event_requires_its_own_configured_rule_version(self):
+        source = self.source()
+        url = '/internal/v1/runs/' + source['run'] + '/events'
+        headers = {'Authorization': 'Bearer worker-token-for-storage-tests-only'}
+        body = {'lease_token': source['lease'], 'producer_event_key': uuid4().hex,
+                'event_type': 'theft_suspected', 'detection_method': 'rule',
+                'rule_code': 'article_trajectory', 'rule_version': 'article-trajectory-v4',
+                'detected_at': datetime.now(timezone.utc).isoformat(),
+                'evidence': {'reason': 'article_disappeared_near_hip'}}
+        self.assertEqual(self.client.post(url, json=body, headers=headers).status_code, 422)
+        with self.db() as db:
+            db.execute("""UPDATE inference_runs SET config_snapshot =
+                       config_snapshot || '{"article_rule_version":"article-trajectory-v4"}'::jsonb
+                       WHERE id = %s""", (source['run'],))
+        self.assertEqual(self.client.post(url, json=body, headers=headers).status_code, 201)
+        self.event(source)
+
     def test_purge_frees_real_files_and_stops_queued_and_running_analysis(self):
         source = self.source()
         self.event(source)

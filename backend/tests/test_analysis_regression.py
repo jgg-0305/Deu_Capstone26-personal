@@ -8,12 +8,61 @@ import numpy as np
 from torch import nn
 
 from backend.api import AnalysisInput
-from backend.worker import analyze
+from backend.worker import EventEpisodes, RtspMediaClock, analyze
 from core.kpt_behavior_classifier import TrackBehaviorBuffer
 from core.tracking_geometry import match_keypoints
 
 
 class AnalysisRegressionTests(unittest.TestCase):
+    def test_live_vandalism_needs_two_new_predictions_at_the_same_threshold(self):
+        model = nn.Identity()
+        model.behavior_input_config = {"sample_fps": 3}
+        with patch.object(TrackBehaviorBuffer, "_build_and_load", return_value=model):
+            buffer = TrackBehaviorBuffer("unused", seq_len=1, stride=1, device="cpu",
+                                         abn_conf_thr=.9, theft_confirmation_threshold=.9,
+                                         verify_live_vandalism=True)
+        track = {"track_id": 1, "bbox": [0, 0, 100, 100]}
+        features = {1: np.ones(34, np.float32)}
+        damage = np.array([.03, 0., .97, 0., 0., 0., 0., 0.], np.float32)
+        normal = np.array([.99, 0., .01, 0., 0., 0., 0., 0.], np.float32)
+        with patch.object(buffer, "_infer", side_effect=[damage, normal, damage, damage]):
+            self.assertEqual(buffer.update([track], {}, 0., features=features)[1][0], 0)
+            self.assertEqual(buffer.progress(1)["state"], "uncertain")
+            self.assertEqual(buffer.update([track], {}, 0., features=features)[1][0], 0)
+            self.assertEqual(buffer.update([track], {}, 1 / 3, features=features)[1][0], 0)
+            self.assertEqual(buffer.update([track], {}, 2 / 3, features=features)[1][0], 0)
+            self.assertEqual(buffer.update([track], {}, 1., features=features)[1][0], 2)
+
+    def test_rtsp_capture_bursts_keep_the_encoder_frame_spacing(self):
+        clock = RtspMediaClock(3)
+        actual = [clock.timestamp(tick, 0, arrival) for tick, arrival in
+                  ((8, 1200), (9, 1210), (10, 1212), (10, 2200), (12, 2530))]
+        for i, timestamp in enumerate(actual):
+            self.assertAlmostEqual(timestamp, 1200 + i * 1000 / 3)
+
+    def test_bag_rule_resumes_display_without_creating_another_event(self):
+        episodes = EventEpisodes()
+        rule = (1, "theft_suspected", "rule")
+        self.assertEqual(episodes.started([rule], 1000, {1: 3.0}), [rule])
+        self.assertEqual(episodes.started([], 1333, {1: 3.0}), [])
+        self.assertEqual(episodes.started([rule], 3000, {1: 3.0}), [])
+        self.assertEqual(episodes.started([], 3333), [])
+        self.assertEqual(episodes.started([rule], 5000, {1: 7.0}), [rule])
+
+    def test_theft_handoff_keeps_one_incident_per_track(self):
+        episodes = EventEpisodes()
+        rule = (1, "theft_suspected", "rule")
+        model = (1, "theft_suspected", "model")
+        other = (2, "theft_suspected", "model")
+        self.assertEqual(episodes.started([rule, model], 1000), [rule])
+        self.assertEqual(episodes.started([rule], 1333), [])
+        self.assertEqual(episodes.started([], 1667), [])
+        self.assertEqual(episodes.started([model, other], 2000), [other])
+        self.assertEqual(episodes.started([model], 2333), [])
+        self.assertEqual(episodes.started([rule], 4000), [rule])
+        episodes.reset()
+        self.assertEqual(episodes.started([model], 100), [model])
+
     def test_overlapping_tracks_keep_original_keypoint_mapping(self):
         points = np.ones((17, 3))
         tracks = [{"track_id": i, "bbox": [0, 0, 40, 60]} for i in (1, 2)]
@@ -21,7 +70,7 @@ class AnalysisRegressionTests(unittest.TestCase):
         self.assertIs(result[1], points)
         self.assertIs(result[2], points)
 
-    def run_video(self, probability, sample_fps=None):
+    def run_video(self, probability, sample_fps=None, threshold=.50, event_threshold=.60):
         calls = []
         frames = 40
         frame = np.zeros((64, 64, 3), dtype=np.uint8)
@@ -63,7 +112,8 @@ class AnalysisRegressionTests(unittest.TestCase):
              patch('backend.worker.TheftMonitor', return_value=rule), \
              patch.object(TrackBehaviorBuffer, '_build_and_load', return_value=behavior_model), \
              patch.object(TrackBehaviorBuffer, '_infer', return_value=probabilities):
-            analyze(api, 'test-camera', AnalysisInput().threshold)
+            analyze(api, 'test-camera', threshold, {'id': 'test-job', 'claim_token': 'test-claim',
+                                                   'settings': {'event_threshold': event_threshold}})
         self.assertEqual(detector.detect.call_count, frames)
         return calls
 
@@ -109,6 +159,15 @@ class AnalysisRegressionTests(unittest.TestCase):
         self.assertIsNone(person['score'])
         self.assertEqual(person['buffer']['state'], 'uncertain')
         self.assertEqual(person['buffer']['candidate']['label'], 0)
+        self.assertFalse(any(path.endswith('/events') for path, _ in calls))
+
+    def test_defaults_require_ninety_percent_for_model_events(self):
+        defaults = AnalysisInput()
+        self.assertEqual((defaults.threshold, defaults.event_threshold), (.9, .9))
+        calls = self.run_video(.8, threshold=defaults.threshold, event_threshold=defaults.event_threshold)
+        final = [body['snapshot'] for path, body in calls if path.endswith('/snapshot')][-1]
+        self.assertIsNone(final['people'][0]['label'])
+        self.assertAlmostEqual(final['people'][0]['buffer']['theft_score'], .8, places=6)
         self.assertFalse(any(path.endswith('/events') for path, _ in calls))
 
 

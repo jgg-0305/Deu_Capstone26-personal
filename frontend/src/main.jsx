@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";
 import { DeleteDialog, Storage } from "./storage.jsx";
-import { settingsForSource } from "./analysis-settings.js";
+import { configuredSettings, settingsForSource } from "./analysis-settings.js";
 import {
   AnalysisFrame, AnalysisSettings, AnalysisStats, DisplaySettings, FileAnalysis, ModelStatus,
   initialDisplay, initialSettings, startWebcamFeed, useSnapshots,
@@ -170,6 +170,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
   const [layout, setLayout] = useState("grid");
   const [sourceMode, setSourceMode] = useState("rtsp");
   const [settings, setSettings] = useState(initialSettings);
+  const [attachedBehavior, setAttachedBehavior] = useState(null);
   const defaultChosen = useRef(false);
   const settingsSource = useRef(null);
   const [display, setDisplay] = useState(initialDisplay);
@@ -181,23 +182,27 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
   const all = sources.map((source) => ({ ...source, stream: webcams[source.id] }));
   const snapshots = useSnapshots(sources, api);
   const chosen = all.find((source) => source.id === selection) ?? all[0];
+  const configured = configuredSettings(models);
+  const newSourceSettings = configured || settings;
 
   const cascade = layout === "cascade" && all.length > 1;
   const media = navigator.mediaDevices;
 
   useEffect(() => {
     if (chosen) {
-      const key = chosen.id + ":" + (chosen.run_id || "");
+      const key = chosen.id + ":" + (chosen.run_id || "") + ":" + Boolean(configured);
       if (settingsSource.current !== key && chosen.behavior_model) {
         settingsSource.current = key;
-        setSettings(settingsForSource(chosen));
+        setSettings(settingsForSource(chosen, models));
       }
       return;
     }
     settingsSource.current = null;
     if (defaultChosen.current || !models.length) return;
     defaultChosen.current = true;
-    if (models.some((model) => model.name === "human_pose_s")) {
+    if (configured) {
+      setSettings(configured);
+    } else if (models.some((model) => model.name === "human_pose_s")) {
       setSettings((current) => ({ ...current, pose_model: "human_pose_s" }));
     }
   }, [models, chosen]);
@@ -275,7 +280,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
         throw new Error("이미 연결된 웹캠입니다.");
       }
       const name = (track.label || "웹캠").slice(0, 108) + " · " + Date.now().toString(36);
-      const source = await api("/cameras/webcam", { name, settings });
+      const source = await api("/cameras/webcam", { name, settings: newSourceSettings });
       if (!mounted.current) {
         await api("/cameras/" + source.id, undefined, "DELETE").catch(() => {});
         return;
@@ -309,9 +314,9 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
         await addWebcam(device);
       } else {
         const source = sourceMode === "upload"
-          ? await api("/cameras/upload?" + new URLSearchParams({ name, filename: video.name, ...settings }), video)
-          : sourceMode === "rtsp" ? await api("/cameras/rtsp", { name, url: url.trim(), settings })
-          : await api("/cameras", { name, sample, settings });
+          ? await api("/cameras/upload?" + new URLSearchParams({ name, filename: video.name, ...newSourceSettings }), video)
+          : sourceMode === "rtsp" ? await api("/cameras/rtsp", { name, url: url.trim(), settings: newSourceSettings })
+          : await api("/cameras", { name, sample, settings: newSourceSettings });
         form.reset();
         await refresh();
         select(source.id);
@@ -344,7 +349,8 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
       const model = await api("/models/behavior/upload?" + new URLSearchParams({ filename: file.name }), file);
       await refreshModels();
       setSettings((old) => ({ ...old, behavior_model: model.name }));
-      notify("행동 모델을 선택했습니다. 기존 영상에 적용하려면 다시 분석을 누르세요.");
+      setAttachedBehavior({ name: model.name, filename: file.name });
+      notify(`${file.name}을 선택했습니다. 기존 영상에 적용하려면 다시 분석을 누르세요.`);
     } catch (error) { onError(error); }
     finally { input.value = ""; setPending(false); }
   }
@@ -410,7 +416,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
               sourceMode === "webcam" ? "웹캠 연결" : sourceMode === "rtsp" ? "CCTV 연결" : "영상 등록 및 테스트"}</button>
           </form>
         </section>
-        <AnalysisSettings {...{ settings, setSettings, models, chosen, pending }} apply={analyze} attachBehavior={canWrite ? attachBehavior : null} />
+        <AnalysisSettings {...{ settings, setSettings, models, chosen, pending, attachedBehavior }} apply={analyze} attachBehavior={canWrite ? attachBehavior : null} />
         <DisplaySettings {...{ display, setDisplay }} />
       </>}
       <AnalysisStats {...{ sources, snapshots }} />
@@ -517,7 +523,12 @@ function Records({ sources, api, revision, canWrite, onError, notify, refresh, o
       {event ? <>
         <p className="muted">{methods[event.detection_method]} · {position(event.source_time_ms)}
           {event.model_score != null && " · 모델 점수 " + Math.round(event.model_score * 100) + "%"}
-          {event.evidence?.reason && " · " + ({ pos_timeout: "POS 영역 미경유", track_lost: "트랙 소실" })[event.evidence.reason]}
+          {event.behavior_threshold != null && event.event_threshold != null &&
+            " · 모델 사건 기준 " + Math.round(Math.max(event.behavior_threshold, event.event_threshold) * 100) + "%" +
+            (event.detection_method === "rule" ? " (규칙에 미적용)" : "")}
+          {event.evidence?.reason && " · " + ({ pos_timeout: "POS 영역 미경유", track_lost: "트랙 소실",
+            article_disappeared_near_hip: "손과 함께 이동한 물체가 골반 주변에서 가려짐",
+            article_disappeared_inside_bag: "손에서 가방 안쪽까지 이동한 상품이 가방에서 가려짐" })[event.evidence.reason]}
         </p>
         {event.media_id ? <Video key={seek} mediaId={event.media_id} time={event.source_time_ms}
           onError={() => notify("영상을 열 수 없습니다. 접속 상태를 확인하세요.")} /> : <p className="empty">연결된 영상이 없습니다.</p>}

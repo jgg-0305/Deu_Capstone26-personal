@@ -219,6 +219,24 @@
         "exact_identity_with_model_used_to_record_demo",
         "independent_accuracy"
       ]
+    },
+    {
+      "id": "human_pose_m",
+      "path": "yolo11m-pose.pt",
+      "role": "human_and_keypoint_detection",
+      "optional": true,
+      "bytes": 42459307,
+      "sha256": "29b17eaf3a3117cbea906090dbedf9159f7c6a49db58ec8b99ed2dfde1cf6eb2",
+      "architecture": "Ultralytics YOLO11m PoseModel",
+      "classes": {
+        "0": "person"
+      },
+      "keypoint_shape": [
+        17,
+        3
+      ],
+      "version": "ultralytics-assets-v8.3.0",
+      "source": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11m-pose.pt"
     }
   ],
   "package_model_dependencies": [

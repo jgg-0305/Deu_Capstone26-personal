@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from "react";
 import { frameAt } from "./analysis-timeline.js";
-import { settingsPreset } from "./analysis-settings.js";
+import { mediumPoseSettings, settingsPreset } from "./analysis-settings.js";
 export { initialSettings } from "./analysis-settings.js";
 
 export const labels = ["정상", "넘어짐", "파손", "방화", "흡연", "유기", "도난 의심", "폭행"];
 export const initialDisplay = { box: true, id: true, points: true, label: true };
 export const modelNames = {
-  human_pose: "YOLO11n · 경량", human_pose_s: "YOLO11s · 균형",
+  human_pose: "YOLO11n · 경량", human_pose_s: "YOLO11s · 균형", human_pose_m: "YOLO11m · 정밀",
   behavior: "KeypointLSTM v2 · 관절과 움직임",
   behavior_kpt_v1: "KeypointLSTM v1 · 관절",
   behavior_rgb: "ResNet50 + LSTM · 장면 전체",
@@ -14,13 +14,30 @@ export const modelNames = {
 const skeleton = [[0,1],[0,2],[1,3],[2,4],[5,6],[5,7],[7,9],[6,8],[8,10],[5,11],[6,12],
   [11,12],[11,13],[13,15],[12,14],[14,16]];
 
-function behaviorText(person) {
+const percent = (value) => Number((value * 100).toFixed(1)) + "%";
+const wristScore = (person, index) => person.points?.[index]?.[2];
+
+function behaviorText(person, snapshot, details = false) {
   if (person.observed === false) return "관절 미관측 · 추적 유지";
-  if (person.label != null) return labels[person.label] + (person.method === "rule" ? " · 규칙" :
-    person.score == null ? "" : ` ${Math.round(person.score * 100)}%`);
+  const threshold = snapshot.behavior_threshold;
+  const modelCutoff = threshold == null ? "" : ` · 모델 기준 ${percent(threshold)}`;
+  const theftScore = person.buffer?.theft_score;
+  const theftDetail = details && theftScore != null ? ` · 모델 절도 점수 ${percent(theftScore)}` : "";
+  const wrists = [wristScore(person, 9), wristScore(person, 10)];
+  const weakWrist = wrists.some(score => score == null || score < .5);
+  const wristDetail = details && person.points?.length
+    ? ` · 손목 검출 왼 ${wrists[0] == null || wrists[0] < .3 ? "미관측" : percent(wrists[0])} / 오른 ${wrists[1] == null || wrists[1] < .3 ? "미관측" : percent(wrists[1])}`
+    : "";
+  if (person.label === 0 && weakWrist) return "판정 보류 · 손목 관측 약함" + wristDetail;
+  if (person.label != null) return labels[person.label] + (person.method === "rule"
+    ? " · 규칙 판정" + modelCutoff + (details ? " (규칙에 미적용)" : "") + theftDetail
+    : person.score == null ? "" : ` ${percent(person.score)}` + (person.label ? modelCutoff : ""));
+  if (person.smoking_deferred) return "판정 보류 · 새 행동 증거 대기";
   const buffer = person.buffer;
   if (buffer?.state === "tracking_gap") return "관절 미관측 · 재검출 대기";
-  if (buffer?.state === "uncertain") return `판정 보류 · ${labels[buffer.candidate.label]} ${Math.round(buffer.candidate.score * 100)}%`;
+  if (buffer?.state === "uncertain" && buffer.candidate) return `판정 보류 · ${labels[buffer.candidate.label]} 후보 ${percent(buffer.candidate.score)}`
+    + (threshold == null ? "" : ` / 기준 ${percent(threshold)} 미달`)
+    + (buffer.candidate.label === 6 ? "" : theftDetail) + wristDetail;
   if (buffer?.state === "insufficient_keypoints") return "관절 정보 부족";
   return buffer ? `관절 수집 ${buffer.collected}/${buffer.required}` : "분류 대기";
 }
@@ -121,13 +138,14 @@ function AnalysisOverlay({ snapshot, display }) {
       {snapshot.people.map((person) => {
         const [x1, y1, x2, y2] = box(person.box);
         const points = person.points;
-        const result = behaviorText(person);
+        const result = behaviorText(person, snapshot);
         const text = [display.id && "ID " + person.id, display.label && result].filter(Boolean).join(" · ");
         return <g key={person.id} className={(person.label > 0 ? "anomaly" : "person") + (person.observed === false ? " predicted" : "")}>
           {display.box && <rect x={x1} y={y1} width={x2 - x1} height={y2 - y1} />}
           {text && <text x={Math.max(2, x1)} y={Math.max(13, y1 - 5)}>{text}</text>}
           {display.points && skeleton.map(([a, b]) => points[a]?.[2] >= 0.3 && points[b]?.[2] >= 0.3 &&
             <line key={a + ":" + b} x1={points[a][0] * width} y1={points[a][1] * height}
+              strokeDasharray={b === 9 || b === 10 ? (points[b][2] < .5 ? "3 2" : undefined) : undefined}
               x2={points[b][0] * width} y2={points[b][1] * height} />)}
           {display.points && points.map(([x, y, confidence], index) => confidence >= 0.3 &&
             <circle key={index} cx={x * width} cy={y * height} r="1.7" />)}
@@ -248,27 +266,32 @@ export function FileAnalysis({ source, display, enabled, onError }) {
         running ? "이 재생 시점의 추적 결과 처리 중" : "이 시점의 추적 결과 없음"}</span>
       {timelineError && <span role="alert">{timelineError}</span>}
       {enabled && current && <span className="playback-results">{current.people.length ? current.people.map((person) =>
-        `ID ${person.id}: ${behaviorText(person)}`).join(" · ") : "이 시점에 감지된 인물 없음"}</span>}
+        `ID ${person.id}: ${behaviorText(person, current, true)}`).join(" · ") : "이 시점에 감지된 인물 없음"}</span>}
     </div>
   </div>;
 }
 
-export function AnalysisSettings({ settings, setSettings, models, chosen, apply, pending, attachBehavior }) {
+export function AnalysisSettings({ settings, setSettings, models, chosen, apply, pending, attachBehavior, attachedBehavior }) {
   const update = (event) => {
     const { name, value } = event.target;
     setSettings({ ...settings, [name]: ["behavior_model", "pose_model"].includes(name) ? value : Number(value) });
   };
   const behaviorModels = models.filter((model) => model.role === "behavior");
   const selectedBehavior = behaviorModels.find((model) => model.name === settings.behavior_model);
+  const selectedFilename = attachedBehavior?.name === settings.behavior_model
+    ? attachedBehavior.filename : selectedBehavior?.filename;
   const poseModels = models.filter((model) => model.role === "pose" && modelNames[model.name]);
   const demoAvailable = poseModels.some((model) => model.name === "human_pose_s");
+  const mediumAvailable = poseModels.some((model) => model.name === "human_pose_m");
+  const configured = models.some((model) => model.is_default && model.name === "human_pose_m");
   return <section className="panel">
     <h2>모델 설정</h2>
     <div className="switch model-presets">
       <button type="button" disabled={pending} onClick={() => setSettings(settingsPreset(settings, demoAvailable))}>원본 영상 기본값</button>
-      <button type="button" disabled={pending || !demoAvailable} onClick={() => setSettings(settingsPreset(settings, demoAvailable, true))}>데모 비교용 설정</button>
+      {!configured && <button type="button" disabled={pending || !demoAvailable} onClick={() => setSettings(settingsPreset(settings, demoAvailable, true))}>데모 비교용 설정</button>}
+      {mediumAvailable && <button type="button" disabled={pending} onClick={() => setSettings(mediumPoseSettings(settings))}>정밀 관절 추적</button>}
     </div>
-    {!demoAvailable && <p className="muted">YOLO11s를 설치하고 모델을 등록하면 데모 설정을 선택할 수 있습니다.</p>}
+    {!configured && !demoAvailable && <p className="muted">YOLO11s를 설치하고 모델을 등록하면 데모 설정을 선택할 수 있습니다.</p>}
     <form onSubmit={apply}>
       <label htmlFor="pose-model">사람·관절 검출 모델</label>
       <select id="pose-model" name="pose_model" value={settings.pose_model} onChange={update}>
@@ -280,14 +303,14 @@ export function AnalysisSettings({ settings, setSettings, models, chosen, apply,
           {modelNames[model.name] || (model.filename + " · " + model.sha256.slice(0, 8))}
         </option>)}
       </select>
-      {selectedBehavior && <p className="muted" title={selectedBehavior.sha256}>
-        선택한 파일 · {selectedBehavior.storage_key || selectedBehavior.filename} · {selectedBehavior.sha256.slice(0, 12)}
-      </p>}
       {attachBehavior && <>
         <label htmlFor="behavior-file">행동 모델 파일 첨부 (.pth)</label>
         <input id="behavior-file" type="file" accept=".pth" disabled={pending} onChange={attachBehavior} />
-        <p className="muted">KeypointLSTM v1/v2 가중치 또는 프로젝트의 장면 모델 model_final.pth를 선택하세요.</p>
+        <p className="muted">관절 행동 모델, 손 영상 융합 모델 또는 프로젝트의 장면 모델 model_final.pth를 선택하세요.</p>
       </>}
+      {selectedFilename && <p className="muted" role="status" title={selectedBehavior?.sha256}>
+        선택한 파일 · {selectedFilename}
+      </p>}
       <label htmlFor="resolution">처리 해상도</label>
       <select id="resolution" name="resolution" value={settings.resolution} onChange={update}>
         <option value="384">384 · 빠름</option><option value="480">480 · 권장</option><option value="640">640 · 정밀</option>
@@ -303,7 +326,7 @@ export function AnalysisSettings({ settings, setSettings, models, chosen, apply,
       <input id="threshold" name="threshold" type="range" min=".5" max="1" step=".01" value={settings.threshold} onChange={update} />
       <label htmlFor="event-threshold">사건 저장 기준 <output>{Math.round(settings.event_threshold * 100)}%</output></label>
       <input id="event-threshold" name="event_threshold" type="range" min=".5" max="1" step=".01" value={settings.event_threshold} onChange={update} />
-      <p className="muted">원본 영상 기본값: 사람 검출 40%, 행동 표시 50%, 사건 저장 60%. 사람 검출 90%는 관절 추적이 끊길 수 있어 데모 비교에만 사용합니다. 3 FPS 영상의 30프레임 입력은 10초입니다.</p>
+      <p className="muted">기본값은 사람 검출 40%, 행동 표시 90%, 모델 사건 저장 90%입니다. 도난 규칙은 별도의 조건으로 판정합니다.</p>
       <label htmlFor="max-age">DeepSORT 최대 소실 프레임</label>
       <input id="max-age" name="max_age" type="number" min="1" max="120" required value={settings.max_age} onChange={update} />
       <p className="muted">새 소스에 적용됩니다. 기존 소스는 선택한 뒤 다시 분석하세요.</p>

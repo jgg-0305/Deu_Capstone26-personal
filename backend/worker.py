@@ -26,6 +26,8 @@ from backend.behavior_upload import MODEL_DIR, UPLOAD_PREFIX
 from backend.live import open_capture
 from backend.samples import ROOT, source_path
 from core.detector import HumanDetector, ObjectDetector
+from core.article_tracking import ArticleDetector, ArticleSmokingGate, ArticleTracker, SmokingMotionEvidence, applicable_article_evidence
+from core.bag_transfer import BagDetector, BagTransferTracker
 from core.kpt_behavior_classifier import TrackBehaviorBuffer
 from core.labels import label_en
 from core.rgb_behavior_classifier import RgbBehaviorClassifier
@@ -34,7 +36,48 @@ from core.tracker import HumanTracker
 from core.tracking_geometry import match_keypoints
 
 RULE_VERSION = "stand-pos-v1"
+ARTICLE_RULE_VERSION = "article-trajectory-v18"
+ARTICLE_ARBITRATION_THRESHOLD = 0.5
 STOP = Event()
+
+
+class EventEpisodes:
+    """Keep a theft event open across a short rule-to-model handoff."""
+
+    def __init__(self):
+        self.previous = set()
+        self.theft_seen = {}
+        self.reported_bag = {}
+
+    def reset(self):
+        self.previous.clear()
+        self.theft_seen.clear()
+        self.reported_bag.clear()
+
+    def started(self, candidates, source_ms, bag_episodes=None):
+        bag_episodes = bag_episodes or {}
+        self.reported_bag = {tid: episode for tid, episode in self.reported_bag.items()
+                             if bag_episodes.get(tid) == episode}
+        self.theft_seen = {tid: seen for tid, seen in self.theft_seen.items()
+                           if 0 <= source_ms - seen[0] <= 1000}
+        starts = []
+        for key in candidates:
+            tid, kind, method = key
+            if kind != "theft_suspected" or tid is None:
+                if key not in self.previous:
+                    starts.append(key)
+                continue
+            seen = self.theft_seen.get(tid)
+            starts_episode = key not in self.previous and (seen is None or seen[1] == method)
+            bag_episode = bag_episodes.get(tid) if method == "rule" else None
+            if bag_episode is not None:
+                starts_episode &= self.reported_bag.get(tid) != bag_episode
+                self.reported_bag[tid] = bag_episode
+            if starts_episode:
+                starts.append(key)
+            self.theft_seen[tid] = (source_ms, method)
+        self.previous = set(candidates)
+        return starts
 
 
 def limit_cpu_threads(predictor):
@@ -56,6 +99,7 @@ class WorkerError(RuntimeError):
 class WorkerClient:
     def __init__(self, url, token):
         self.url = url.rstrip("/")
+        self.token = token
         self.session = requests.Session()
         self.session.headers["Authorization"] = f"Bearer {token}"
 
@@ -152,25 +196,55 @@ def capture_frames(capture):
         index += 1
 
 
+class RtspMediaClock:
+    """Use media time for inference without using it to age the live queue."""
+
+    def __init__(self, fps):
+        self.period = 1000 / fps if math.isfinite(fps) and 0 < fps <= 240 else None
+        self.origin = None
+        self.last = None
+
+    def timestamp(self, ticks, position, received):
+        pts = ticks * self.period if self.period is not None and math.isfinite(ticks) else position
+        if not math.isfinite(pts) or pts < 0:
+            pts = None
+        if self.last is None:
+            self.origin = received - pts if pts is not None else None
+            self.last = received
+        else:
+            fallback = self.last + self.period if self.period is not None else max(received, self.last)
+            if self.origin is None and pts is not None:
+                self.origin = fallback - pts
+            timestamp = self.origin + pts if self.origin is not None and pts is not None else fallback
+            self.last = timestamp if timestamp > self.last + 1e-3 else fallback
+        return self.last
+
+
 @contextmanager
 def rtsp_frames(url):
-    # 추론이 느려도 카메라 입력을 계속 읽어 오래된 프레임이 밀리지 않게 한다.
-    latest = Queue(maxsize=1)
+    # 짧은 부하는 몇 프레임 흡수하고, 오래된 프레임이 대기열에 쌓이지 않게 한다.
+    latest = Queue(maxsize=6)
     stopped = Event()
+    started_at = time.monotonic()
 
     def read():
-        started = time.monotonic()
         generation = 0
         while not stopped.is_set() and not STOP.is_set():
             capture = None
             try:
                 generation += 1
                 capture = open_capture(url)
+                fps = capture.get(cv2.CAP_PROP_FPS)
+                clock = RtspMediaClock(fps)
+                max_age = min(1500., max(475., 4. * (clock.period or 0)))
                 while capture.isOpened() and not stopped.is_set() and not STOP.is_set():
                     ok, frame = capture.read()
                     if not ok:
                         break
-                    item = (frame, (time.monotonic() - started) * 1000, generation)
+                    received = (time.monotonic() - started_at) * 1000
+                    ticks = capture.get(cv2.CAP_PROP_PTS) if hasattr(cv2, "CAP_PROP_PTS") else math.nan
+                    pts = clock.timestamp(ticks, capture.get(cv2.CAP_PROP_POS_MSEC), received)
+                    item = (frame, pts, received, generation, max_age)
                     try:
                         latest.put_nowait(item)
                     except Full:
@@ -190,7 +264,12 @@ def rtsp_frames(url):
         generation = None
         while not stopped.is_set() and not STOP.is_set():
             try:
-                frame, pts, current = latest.get(timeout=1)
+                frame, pts, received, current, max_age = latest.get(timeout=1)
+                while not latest.empty() and (time.monotonic() - started_at) * 1000 - received > max_age:
+                    try:
+                        frame, pts, received, current, max_age = latest.get_nowait()
+                    except Empty:
+                        break
             except Empty:
                 yield None, None
                 continue
@@ -232,7 +311,8 @@ def webcam_frames(camera_id):
 
 
 def publish_snapshot(api, path, lease, run_id, frame, tracks, keypoints, predictions,
-                     objects, suspects, frame_count, pts, fps, scene, file_source, diagnostics):
+                     objects, suspects, frame_count, pts, fps, scene, file_source, diagnostics,
+                     article_suspects=(), deferred_smoking=()):
     height, width = frame.shape[:2]
 
     def box(item):
@@ -247,7 +327,9 @@ def publish_snapshot(api, path, lease, run_id, frame, tracks, keypoints, predict
         if progress and progress["state"] == "uncertain":
             # 정상 후보도 표시 기준 미달이면 확정된 정상 결과로 표시하지 않는다.
             label, score = None, None
-        if tid in suspects and not label:
+        if tid in deferred_smoking:
+            label, score = None, None
+        if tid in article_suspects or (tid in suspects and not label):
             label, score = 6, None
         points = keypoints.get(tid)
         if points is None:
@@ -256,8 +338,9 @@ def publish_snapshot(api, path, lease, run_id, frame, tracks, keypoints, predict
             "id": tid, "box": box(track), "label": label, "score": score,
             "model_result": predictions.get(tid),
             "observed": track.get("observed", True), "missing_frames": track.get("missing_frames", 0),
-            "method": "rule" if tid in suspects and score is None else "model",
+            "method": "rule" if tid in article_suspects or (tid in suspects and score is None) else "model",
             "buffer": progress,
+            "smoking_deferred": tid in deferred_smoking,
             "points": [[float(x) / width, float(y) / height, float(conf)] for x, y, conf in points],
         })
     snapshot = {
@@ -276,18 +359,59 @@ def publish_snapshot(api, path, lease, run_id, frame, tracks, keypoints, predict
     api.request("POST", path + "/snapshot", {**lease, "snapshot": snapshot, "timeline": file_source})
 
 
+class LiveSnapshotPublisher:
+    """Send only the newest pending preview without blocking RTSP inference."""
+
+    def __init__(self, api):
+        self.api = WorkerClient(api.url, api.token)
+        self.pending = Queue(maxsize=1)
+        self.stopped = Event()
+        self.thread = Thread(target=self.run, daemon=True)
+        self.thread.start()
+
+    def submit(self, send):
+        try:
+            self.pending.get_nowait()
+        except Empty:
+            pass
+        self.pending.put_nowait(send)
+
+    def run(self):
+        try:
+            while not self.stopped.is_set():
+                try:
+                    send = self.pending.get(timeout=.25)
+                except Empty:
+                    continue
+                try:
+                    send(self.api)
+                except WorkerError as error:
+                    if error.status == 409:
+                        break
+                except requests.RequestException:
+                    continue
+        finally:
+            self.api.session.close()
+
+    def close(self):
+        self.stopped.set()
+        self.thread.join(timeout=16)
+
+
 @torch.inference_mode()
 def analyze(api, camera_id, threshold, job=None):
     settings = {
         "resolution": 480, "detection_interval": 1, "detection_confidence": 0.4,
-        "max_age": 30, "event_threshold": 0.6, **(job.get("settings", {}) if job else {}),
+        "max_age": 30, "event_threshold": 0.9, **(job.get("settings", {}) if job else {}),
     }
     behavior_model = settings.pop("behavior_model", "behavior")
     pose_model = settings.pop("pose_model", "human_pose")
     paths, ids = verified_models(api, behavior_model, pose_model)
+    article_path = os.getenv("CCTV_ARTICLE_MODEL") if behavior_model != "behavior_rgb" else None
+    article_config = {"article_rule_version": ARTICLE_RULE_VERSION} if article_path else {}
     claim = {"job_id": job["id"], "claim_token": job["claim_token"]} if job else {}
     run = api.request("POST", "/runs", {
-        **claim, **settings, "camera_id": str(camera_id), "worker_id": "video-worker",
+        **claim, **settings, **article_config, "camera_id": str(camera_id), "worker_id": "video-worker",
         "models": ids, "rule_version": RULE_VERSION, "behavior_threshold": threshold,
     })
     path = f"/runs/{run['id']}"
@@ -296,6 +420,7 @@ def analyze(api, camera_id, threshold, job=None):
     status = "failed"
     count = 0
     frame_count = 0
+    publisher = None
     error_code = "model_load_failed"
     try:
         api.request("POST", path + "/snapshot", {**lease, "snapshot": {
@@ -310,11 +435,31 @@ def analyze(api, camera_id, threshold, job=None):
         pose.model.add_callback("on_predict_start", limit_cpu_threads)
         detector.model.add_callback("on_predict_start", limit_cpu_threads)
         rgb = RgbBehaviorClassifier(paths["behavior"]) if behavior_model == "behavior_rgb" else None
-        behavior = None if rgb else TrackBehaviorBuffer(paths["behavior"], abn_conf_thr=threshold,
-                                                       max_missing=settings["max_age"])
+        article_detector = ArticleDetector(article_path) if article_path else None
+        rtsp_source = run["source_type"] == "rtsp"
+        bag_path = MODEL_DIR / "yolo11s-bag.pt"
+        bag_detector = BagDetector(bag_path) if article_detector and pose_model == "human_pose_m" and bag_path.is_file() else None
+        bag_transfer = BagTransferTracker(recover_compressed=rtsp_source) if bag_detector else None
+        bag_suspects = set()
+        article_tracker = ArticleTracker(strict_concealment=pose_model == "human_pose_m")
+        if rtsp_source and isinstance(api, WorkerClient):
+            publisher = LiveSnapshotPublisher(api)
+        extended_article_tracking = rtsp_source or pose_model == "human_pose_m"
+        pocket_tracker = ArticleTracker(pocket_recovery=True, continuous_carry=extended_article_tracking,
+                                        strict_concealment=pose_model == "human_pose_m", recover_compressed=rtsp_source)
+        smoking_motion = SmokingMotionEvidence() if rtsp_source else None
+        article_suspects = set()
+        smoking_gate = ArticleSmokingGate()
+        deferred_smoking = set()
+        behavior = None if rgb else TrackBehaviorBuffer(
+            paths["behavior"], abn_conf_thr=threshold, max_missing=settings["max_age"],
+            theft_confirmation_threshold=max(.90, threshold, settings["event_threshold"]),
+            verify_live_vandalism=rtsp_source,
+        )
         scene = None
         predictions = {}
         objects = []
+        last_object_detection_pts = -math.inf
         suspects = set()
         last_frame_pts = -math.inf
         pose_count = 0
@@ -324,6 +469,15 @@ def analyze(api, camera_id, threshold, job=None):
         if not pose.is_pose or detector.names != {0: "stand", 1: "pos"}:
             raise RuntimeError("등록된 모델의 분류 구성이 올바르지 않습니다.")
         error_code = "inference_failed"
+        if rtsp_source:
+            tracker.warmup_live()
+            warmup = np.zeros((360, 640, 3), dtype=np.uint8)
+            pose.detect(warmup)
+            detector.detect(warmup)
+            if article_detector:
+                article_detector.warmup_live()
+            if bag_detector:
+                bag_detector.warmup_live()
 
         def diagnostics():
             classifier = rgb or behavior
@@ -341,7 +495,7 @@ def analyze(api, camera_id, threshold, job=None):
                 "behavior_threshold": threshold, "event_threshold": settings["event_threshold"],
                 "behavior_sample_fps": behavior.sample_fps if behavior else None,
             }
-        previous = set()
+        episodes = EventEpisodes()
         last_heartbeat = started = time.monotonic()
         last_snapshot = 0
         with source_frames(run, camera_id) as frames:
@@ -361,33 +515,82 @@ def analyze(api, camera_id, threshold, job=None):
                         if rgb:
                             rgb.features.clear()
                         rule = TheftMonitor()
+                        article_tracker.reset()
+                        pocket_tracker.reset()
+                        if bag_transfer:
+                            bag_transfer.reset()
+                        bag_suspects.clear()
+                        article_suspects.clear()
+                        smoking_gate.blocked.clear()
+                        if smoking_motion:
+                            smoking_motion.reset()
+                        deferred_smoking.clear()
                         tracks, keypoints, predictions, objects, suspects, scene = [], {}, {}, [], set(), None
-                        previous.clear()
-                    api.request("POST", path + "/snapshot", {**lease, "snapshot": {
+                        last_object_detection_pts = -math.inf
+                        episodes.reset()
+                    reconnect = {**lease, "snapshot": {
                         **diagnostics(), "phase": "reconnecting", "people": [], "objects": [],
+                        "connection_generation_changed": pts is not None,
                         "frame_count": frame_count, "fps": 0, "updated_at_ms": round(time.time() * 1000),
-                    }})
+                    }}
+                    if publisher:
+                        publisher.submit(lambda client, body=reconnect: client.request("POST", path + "/snapshot", body))
+                    else:
+                        api.request("POST", path + "/snapshot", reconnect)
                     continue
                 if frame_count % settings["detection_interval"] == 0:
                     detections = pose.detect(frame)
                     pose_count += 1
                     tracks = tracker.update(detections, frame)
                     keypoints = match_keypoints(tracks, detections)
-                    # 원본과 같은 검출 시점에 가판대와 결제기 영역을 갱신한다.
-                    objects = detector.detect(frame)
+                    # 가판대와 결제기는 대체로 고정돼 있어 RTSP 관절·상품 분석과 따로 갱신한다.
+                    if not rtsp_source or pts - last_object_detection_pts >= 650:
+                        objects = detector.detect(frame)
+                        last_object_detection_pts = pts
                     if rgb:
                         scene = rgb.update(frame)
                     else:
-                        predictions = behavior.update(tracks, keypoints, source_seconds=pts / 1000)
+                        predictions = behavior.update(tracks, keypoints, source_seconds=pts / 1000, frame=frame)
                     observed_tracks = [t for t in tracks if t.get("observed", True)]
                     suspects = rule.update(observed_tracks, keypoints, objects, source_seconds=pts / 1000, include_lost=True)
+                    supported_smoking = smoking_motion.update(observed_tracks, pts / 1000) if smoking_motion else set()
+                    if article_detector:
+                        seconds = pts / 1000
+                        due = article_tracker.needs_frame(seconds)
+                        items, pocket_items = [], []
+                        if due and extended_article_tracking:
+                            items, pocket_items = article_detector.detect_with_compact_views(frame, observed_tracks)
+                        elif due:
+                            items = article_detector.detect(frame, observed_tracks)
+                            pocket_items = article_detector.detect(frame, observed_tracks, compact=True)
+                        article = article_tracker.update(observed_tracks, items, seconds, frame=frame)
+                        pocket = pocket_tracker.update(observed_tracks, pocket_items, seconds, frame=frame)
+                        if bag_transfer:
+                            bag_suspects = bag_transfer.update(observed_tracks, items + pocket_items,
+                                                               seconds, frame, bag_detector)
+                        rule_candidates = behavior.rule_candidates(predictions, ARTICLE_ARBITRATION_THRESHOLD)
+                        article_suspects = applicable_article_evidence(
+                            rule_candidates, set(article) | set(pocket) | bag_suspects, observed_tracks)
+                        if rtsp_source:
+                            article_suspects.difference_update(
+                                tid for tid, (label, score) in rule_candidates.items()
+                                if label == 4 and score >= .75 and (tid in supported_smoking or tid not in article)
+                            )
+                        deferred_smoking = smoking_gate.update(rule_candidates, article_suspects, observed_tracks,
+                                                               behavior.inference_origins, ARTICLE_ARBITRATION_THRESHOLD)
+                    else:
+                        deferred_smoking = set()
+                    if smoking_motion:
+                        deferred_smoking.update(tid for tid, (label, _) in predictions.items()
+                                                if label == 4 and tid not in supported_smoking)
                 present = {track["track_id"] for track in tracks if track.get("observed", True)}
                 candidates = {
                     (tid, label_en(label).lower().replace("theft", "theft_suspected"), "model"): {
                         "model_score": score, "score_model_role": "behavior",
                     }
                     for tid, (label, score) in predictions.items()
-                    if label and score >= max(threshold, settings["event_threshold"])
+                    if label and tid not in article_suspects and tid not in deferred_smoking
+                    and score >= max(threshold, settings["event_threshold"])
                 }
                 if scene and scene[0] and scene[1] >= max(threshold, settings["event_threshold"]):
                     kind = label_en(scene[0]).lower().replace("theft", "theft_suspected")
@@ -397,9 +600,15 @@ def analyze(api, camera_id, threshold, job=None):
                         "rule_code": "stand_pos", "rule_version": RULE_VERSION,
                         "evidence": {"reason": "pos_timeout" if tid in present else "track_lost"},
                     }
-                for (tid, kind, method), details in candidates.items():
-                    if (tid, kind, method) in previous:
-                        continue
+                for tid in article_suspects:
+                    reason = "article_disappeared_inside_bag" if tid in bag_suspects else "article_disappeared_near_hip"
+                    candidates[(tid, "theft_suspected", "rule")] = {
+                        "rule_code": "article_trajectory", "rule_version": ARTICLE_RULE_VERSION,
+                        "evidence": {"reason": reason},
+                    }
+                bag_episodes = bag_transfer.active if bag_transfer else None
+                for tid, kind, method in episodes.started(candidates, pts, bag_episodes):
+                    details = candidates[(tid, kind, method)]
                     api.request("POST", path + "/events", {
                         **lease, **details, "event_type": kind, "detection_method": method,
                         "track_id": str(tid) if tid is not None else None, "producer_event_key": f"{frame_count}:{tid}:{kind}:{method}",
@@ -407,13 +616,16 @@ def analyze(api, camera_id, threshold, job=None):
                         "source_time_ms": round(pts), "source_frame_index": frame_count,
                     })
                     count += 1
-                previous = set(candidates)
                 frame_count += 1
                 publish_due = (frame_count - 1) % settings["detection_interval"] == 0 if file_source else now - last_snapshot >= 0.10
                 if publish_due:
-                    publish_snapshot(api, path, lease, run["id"], frame, tracks, keypoints,
-                                     predictions, objects, suspects, frame_count, pts,
-                                     frame_count / max(0.01, time.monotonic() - started), scene, file_source, diagnostics())
+                    snapshot = (path, lease, run["id"], frame, tracks, keypoints, predictions, objects,
+                                set(suspects), frame_count, pts, frame_count / max(.01, time.monotonic() - started),
+                                scene, file_source, diagnostics(), set(article_suspects), set(deferred_smoking))
+                    if publisher:
+                        publisher.submit(lambda client, args=snapshot: publish_snapshot(client, *args))
+                    else:
+                        publish_snapshot(api, *snapshot)
                     last_snapshot = now
                     last_frame_pts = pts
         if STOP.is_set():
@@ -421,10 +633,13 @@ def analyze(api, camera_id, threshold, job=None):
             return
         if frame_count == 0:
             raise SourceError("해석 가능한 영상 프레임이 없습니다.")
+        if publisher:
+            publisher.close()
+            publisher = None
         publish_snapshot(api, path, lease, run["id"], frame, tracks, keypoints,
                          predictions, objects, suspects, frame_count, pts,
                          frame_count / max(0.01, time.monotonic() - started), scene, file_source,
-                         {**diagnostics(), "phase": "completed"})
+                         {**diagnostics(), "phase": "completed"}, article_suspects, deferred_smoking)
         status = "completed"
     except SourceError:
         error_code = "source_unavailable"
@@ -437,6 +652,8 @@ def analyze(api, camera_id, threshold, job=None):
         status = "stopped"
         raise
     finally:
+        if publisher:
+            publisher.close()
         try:
             api.request("POST", path + "/finish", {
                 **lease, "status": status, "error_code": error_code if status == "failed" else None,
@@ -501,7 +718,7 @@ def main():
     mode.add_argument("--serve", action="store_true", help="관제실의 분석 요청을 처리합니다.")
     parser.add_argument("--api-url", default="http://127.0.0.1:8000")
     parser.add_argument("--live-slots", type=int, choices=range(1, 9), default=3)
-    parser.add_argument("--threshold", type=float, default=0.50)
+    parser.add_argument("--threshold", type=float, default=0.90)
     args = parser.parse_args()
     token = os.environ.get("CCTV_WORKER_TOKEN", "")
     if len(token) < 32 or not 0.5 <= args.threshold <= 1:

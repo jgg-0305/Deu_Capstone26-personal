@@ -153,6 +153,12 @@ Windows PowerShell에서 `(Invoke-RestMethod http://127.0.0.1:8000/health/ready)
 
 ## 원본 영상 설정으로 업데이트하고 재검증하기
 
+YOLO11m Pose를 사용할 경우 공식 Ultralytics 모델 파일 `yolo11m-pose.pt`를 저장소 루트에 두고 아래 `register-models`를 실행한다. 등록한 뒤 웹의 모델 설정에서 정밀 관절 추적 프리셋으로 선택할 수 있다. YOLO11m을 선택하면 파일에서도 RTSP와 같은 다중 크기 상품 검출과 궤적 연결을 사용한다.
+
+가방으로의 상품 이동을 감지하려면 Ultralytics v8.3.0 배포의 `yolo11s.pt`를
+`.local-models/yolo11s-bag.pt`로 저장한다. 이 가중치는 가방 후보를 확인할 때만 사용하며,
+상품 검출 모델과 YOLO11m 관절 모델은 기존 설정을 사용한다.
+
 기존 API와 워커 터미널에서 각각 `Ctrl+C`로 종료한 뒤 실행한다. 8000번 포트를 유지한다. 기존 DB 연결과 워커 토큰 설정을 그대로 사용하며, 새 토큰을 만들 때는 API와 워커 양쪽에 같은 값을 설정해야 한다.
 
 Windows PowerShell — 기존 DB 설정을 한 첫 번째 터미널:

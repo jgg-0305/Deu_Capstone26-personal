@@ -52,7 +52,7 @@ def migrate():
 
 def register_models():
     manifest = json.loads((ROOT / "docs/design/model-manifest.json").read_text())
-    roles = {"human_pose": "pose", "human_pose_s": "pose", "store_objects": "object", "behavior": "behavior",
+    roles = {"human_pose": "pose", "human_pose_s": "pose", "human_pose_m": "pose", "store_objects": "object", "behavior": "behavior",
              "behavior_kpt_v1": "behavior", "behavior_rgb": "behavior"}
     with connect() as db:
         for artifact in manifest["models"]:
