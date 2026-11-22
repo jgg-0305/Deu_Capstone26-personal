@@ -34,6 +34,8 @@ def main():
 
     api = start("uvicorn", "backend.api:app", "--host", "127.0.0.1", "--port", str(args.port), "--no-access-log")
     worker = None
+    notifier = None
+    notifier_retry = 0.0
     try:
         for _ in range(50):
             if api.poll() is not None:
@@ -45,18 +47,25 @@ def main():
                 time.sleep(.2)
         else:
             raise RuntimeError("Web API did not become ready.")
+        worker_retry = 0.0
         while api.poll() is None:
-            worker = start("backend.worker", "--serve", "--api-url", address)
-            while api.poll() is None and worker.poll() is None:
-                time.sleep(.5)
-            if api.poll() is None:
+            now = time.monotonic()
+            if worker is not None and worker.poll() is not None:
                 print(f"분석 워커 종료({worker.returncode}). 2초 뒤 다시 시작합니다.", flush=True)
-                time.sleep(2)
+                worker, worker_retry = None, now + 2
+            if worker is None and now >= worker_retry:
+                worker = start("backend.worker", "--serve", "--api-url", address)
+            if notifier is not None and notifier.poll() is not None:
+                print(f"카카오톡 워커 종료({notifier.returncode}). 10초 뒤 다시 시작합니다.", flush=True)
+                notifier, notifier_retry = None, now + 10
+            if env.get("CCTV_KAKAO_LINK_URL") and notifier is None and now >= notifier_retry:
+                notifier = start("backend.kakao_notify", "serve")
+            time.sleep(.5)
         raise SystemExit(api.returncode)
     except KeyboardInterrupt:
         pass
     finally:
-        for process in (worker, api):
+        for process in (notifier, worker, api):
             if process is not None and process.poll() is None:
                 process.terminate()
                 process.wait(timeout=10)

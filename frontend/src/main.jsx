@@ -515,6 +515,10 @@ function Records({ sources, api, revision, canWrite, onError, notify, refresh, o
         {events.map((entry) => <button className="event" key={entry.id} aria-current={entry.id === selected} onClick={() => choose(entry)}>
           <strong>{types[entry.event_type] || entry.event_type}</strong>
           <small>{entry.camera_name} · {position(entry.source_time_ms)} · {methods[entry.detection_method]}</small>
+          {entry.kakao_status && <small>카카오톡 · {({
+            queued: "대기", delivering: "발송 중", retry_wait: "재시도 대기",
+            sent: "발송 완료", failed: "발송 실패", cancelled: "발송 취소",
+          })[entry.kakao_status]}</small>}
         </button>)}
         {!events.length && <p className="empty">{loading ? "사건을 불러오는 중…" : "조건에 맞는 사건이 없습니다."}</p>}
       </div>
@@ -563,6 +567,8 @@ function Dashboard({ user, logout }) {
   const [selection, setSelection] = useState(null);
   const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState("");
+  const [kakao, setKakao] = useState(null);
+  const [kakaoPending, setKakaoPending] = useState(false);
   const generation = useRef(0);
   const api = request;
   const onError = useCallback((error) => {
@@ -586,6 +592,36 @@ function Dashboard({ user, logout }) {
   }, [refresh, api, onError]);
 
   const canWrite = user.role === "owner";
+  useEffect(() => {
+    if (!canWrite) return;
+    api("/kakao/status").then(setKakao).catch(onError);
+    const url = new URL(window.location.href);
+    const result = url.searchParams.get("kakao");
+    if (!result) return;
+    const messages = {
+      connected: "카카오톡 나에게 보내기 계정을 연결했습니다.",
+      cancelled: "카카오 로그인이 취소되었습니다.",
+      expired: "카카오 로그인 요청이 만료되었습니다. 다시 시도하세요.",
+      permission: "카카오톡 메시지 전송 동의가 필요합니다.",
+      linked_elsewhere: "다른 관제 계정에 이미 연결된 카카오 계정입니다.",
+      failed: "카카오 연결에 실패했습니다. 서버의 앱 키, 시크릿, 콜백 주소를 확인하세요.",
+    };
+    if (messages[result]) setNotice(messages[result]);
+    url.searchParams.delete("kakao");
+    window.history.replaceState(null, "", url);
+  }, [api, canWrite, onError]);
+
+  async function connectKakao() {
+    setKakaoPending(true);
+    try {
+      const { url } = await api("/kakao/login", undefined, "POST");
+      window.location.assign(url);
+    } catch (error) {
+      onError(error);
+      setKakaoPending(false);
+    }
+  }
+
   return <>
     <header className="topbar">
       <span className="brand"><span className="brand-mark" aria-hidden="true">◉</span> 매장 영상 관제</span>
@@ -593,6 +629,10 @@ function Dashboard({ user, logout }) {
         <button className="tab" aria-pressed={tab === "monitor"} onClick={() => setTab("monitor")}>영상 관제</button>
         <button className="tab" aria-pressed={tab === "records"} onClick={() => setTab("records")}>사건 기록</button>
         <button className="tab" aria-pressed={tab === "storage"} onClick={() => setTab("storage")}>저장 공간</button>
+        {canWrite && <button className="tab kakao-login" onClick={connectKakao} disabled={kakaoPending}
+          title={kakao?.connected ? "알림을 받을 카카오 계정을 다시 연결" : "나와의 채팅으로 이상행동 알림 받기"}>
+          {kakao?.connected ? "카카오 연결됨 · 변경" : "카카오 로그인"}
+        </button>}
       </nav>
       <div id="account"><span id="user-name">{user.display_name}</span>
         <button className="quiet" onClick={() => api("/auth/logout", undefined, "POST").then(() => logout()).catch(onError)}>로그아웃</button>

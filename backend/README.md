@@ -65,6 +65,54 @@ python -m backend.worker --serve
 
 ## 화면에서 확인
 
+### 카카오톡 이상행동 알림
+
+관제 소유자 계정으로 로그인한 뒤 상단 메뉴의 **카카오 로그인**을 누르고 카카오 계정을 선택한다. 카카오톡 메시지 전송에 동의하면 이후 새 사건이 연결한 계정의 **나와의 채팅**으로 전송된다. 상단의 **카카오 연결됨 · 변경**에서 수신 계정을 바꿀 수 있다. 테스트 관리자 계정에는 카카오 계정을 연결할 수 없다.
+
+카카오 디벨로퍼스에서 **카카오 로그인**을 켜고, 콜백 `http://127.0.0.1:8000/kakao/callback`과 카카오톡 메시지 전송 동의항목(`talk_message`)을 등록한다. 서비스 주소를 바꾸면 콜백도 바꿔 카카오에 똑같이 등록한다. 서버의 REST API 키는 `CCTV_KAKAO_REST_API_KEY`에서 읽고, 없으면 기존 `kakao_local_config.json`의 REST API 키를 사용한다. 카카오 앱의 클라이언트 시크릿을 사용하는 경우 서버 환경에 `CCTV_KAKAO_CLIENT_SECRET`도 설정한다. 기존 토큰을 가져올 필요 없이 메뉴에서 새로 동의할 수 있다.
+
+macOS (기존 로컬 DB 설정 사용):
+
+```bash
+export CCTV_KAKAO_REDIRECT_URI='http://127.0.0.1:8000/kakao/callback'
+export CCTV_KAKAO_LINK_URL='http://127.0.0.1:8000'
+bash backend/run_local_mac.sh --port 8000
+```
+
+Windows PowerShell (서버와 같은 `CCTV_DATABASE_URL`을 설정한 상태):
+
+```powershell
+$Py = ".\.venv-web\Scripts\python.exe"
+$env:CCTV_KAKAO_REDIRECT_URI = 'http://127.0.0.1:8000/kakao/callback'
+$env:CCTV_KAKAO_LINK_URL = 'http://127.0.0.1:8000'
+npm.cmd --prefix frontend run build
+& $Py -m backend.run_local --port 8000
+```
+
+관제 화면은 콜백과 같은 주소로 열고, `CCTV_KAKAO_LINK_URL`은 카카오 앱의 **제품 링크 관리**에 등록한 주소를 사용한다. 휴대폰에서 **대시보드 확인**을 누르려면 휴대폰이 접근 가능한 HTTPS 주소를 등록한다. 통합 실행은 URL이 설정되면 알림 워커도 시작한다. 서비스를 분리 실행할 경우 API에 마이그레이션을 적용하고, 같은 DB에 연결된 별도 프로세스에서 `python -m backend.kakao_notify serve`를 실행한다. API 및 프록시의 콜백 접근 로그에는 쿼리 문자열을 기록하지 않는다.
+
+메시지는 감지 유형, 시간, 사건 ID, **대시보드 확인** 버튼과 사건이 시작된 순간의 사진을 담는 피드 형식이다. 사진을 카드에 표시하려면 카카오 서버가 접근할 수 있는 HTTPS 주소에서 **`/kakao/event-images/` 경로만** 관제 API로 전달한다. 관제 화면과 `/internal/` 경로를 공개할 필요는 없다. API와 발송 워커에 동일한 환경 변수를 설정한다.
+
+```bash
+# macOS
+export CCTV_KAKAO_IMAGE_BASE_URL='https://images.example.com'
+export CCTV_KAKAO_IMAGE_SECRET="$(.venv-web/bin/python -c 'import secrets; print(secrets.token_urlsafe(32))')"
+```
+
+```powershell
+# Windows PowerShell
+$env:CCTV_KAKAO_IMAGE_BASE_URL = 'https://images.example.com'
+$env:CCTV_KAKAO_IMAGE_SECRET = & .\.venv-web\Scripts\python.exe -c "import secrets; print(secrets.token_urlsafe(32))"
+```
+
+예시 도메인을 실제 HTTPS 주소로 바꾸고, 생성한 키는 서버의 비밀 설정에 저장해 재시작할 때도 동일하게 사용한다. 키를 변경하면 기존 사진 링크가 만료된다. 프록시는 사진 URL의 쿼리 문자열을 접근 로그에 남기지 않는다. 사진 링크는 최대 1시간 접근할 수 있고, 사진 원본은 알림 워커가 24시간 만료 후 정리한다. 사건을 삭제하면 서버 사진도 함께 삭제된다. 카카오가 이미 읽어 간 이미지는 카카오톡에 남을 수 있다. 외부 주소가 없는 로컬 환경에서는 기존 텍스트 중심 카드가 계속 발송된다. 실제 사진이 없을 때만 `CCTV_KAKAO_IMAGE_URL`의 공개용 대표 이미지가 사용된다.
+
+ngrok으로 사진만 제공할 때는 프로젝트 폴더에서 `python -m backend.kakao_image_gateway --port 18082 --api-port 8000`을 실행하고, 다른 터미널에서 `ngrok http http://127.0.0.1:18082 --inspect=false`를 실행한다. ngrok이 표시하는 HTTPS 주소를 `CCTV_KAKAO_IMAGE_BASE_URL`에 설정한다. 관제 포트 8000을 ngrok에 직접 연결하지 않는다.
+
+RTSP·웹캠의 신규 사건만 기본 발송 대상이다. 파일·샘플 분석에도 카톡이 필요하면 **웹 API 실행 환경**에 `CCTV_KAKAO_INCLUDE_FILES=1`을 설정하고 API를 재시작한다. 이전에 저장한 사건은 소급 발송하지 않는다. 발송 상태는 사건 기록을 다시 조회해 확인할 수 있다. 카카오가 전송 제한으로 거절한 요청은 지연 재시도하며, 발송 여부가 불명확한 오류는 중복을 피하기 위해 실패로 기록한다. 토큰은 서버의 Git 제외 디렉터리 `.local-kakao/`에 보관한다.
+
+### 모델과 분석 상태
+
 로컬에서는 PostgreSQL 연결과 프런트엔드 빌드를 준비한 뒤 `python -m backend.run_local`로 API와 분석 워커를 함께 실행할 수 있다. 이 명령은 마이그레이션과 모델 등록을 적용하고, 워커가 종료되면 다시 시작한다.
 
 macOS와 Windows 모두 모델 설정의 **YOLO 포즈 모델 파일 첨부 (.pt)**에서 프로젝트가 검증한 YOLO11n/s/m Pose 파일을 등록할 수 있다. 첨부 후 모델이 선택되며, 기존 영상에는 **다시 분석**으로 적용한다. 일반 객체 검출용 `yolo11m.pt`와 등록 목록에 없는 가중치는 지원하지 않는다.
@@ -114,7 +162,7 @@ python -m backend.manage set-login --user-id UUID --username myuser
 
 일반 회원은 자신의 소스와 사건을 관리한다. 테스트 관리자는 로컬 검증용 운영자 계정이며 `CCTV_ENABLE_TEST_ADMIN=1`을 설정한 서버에서만 접속할 수 있다. 외부 배포에서는 이 설정을 제거하고 HTTPS를 적용한다.
 
-영상 재생은 원본 MP4와 사건의 영상 내 시점을 사용한다. 미디어는 소유권을 확인한 뒤 브라우저의 구간 요청으로 전송한다. 별도 카카오 발송은 후속 연동이다. 외부 서버에서는 HTTPS를 적용하고 프록시에서 `/internal/`을 공개 경로에서 제외한다.
+영상 재생은 원본 MP4와 사건의 영상 내 시점을 사용한다. 미디어는 소유권을 확인한 뒤 브라우저의 구간 요청으로 전송한다. 카카오톡 발송은 위 알림 워커를 실행한 환경에서 적용한다. 외부 서버에서는 HTTPS를 적용하고 프록시에서 `/internal/`을 공개 경로에서 제외한다.
 
 ## 이상행동 모델 선택
 

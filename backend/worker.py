@@ -25,6 +25,7 @@ import torch
 
 from backend.analysis_media import frame_path
 from backend.behavior_upload import MODEL_DIR, UPLOAD_PREFIX
+from backend.kakao_images import IMAGE_LIMIT
 from backend.live import open_capture
 from backend.pose_upload import uploaded_pose_path
 from backend.samples import ROOT, source_path
@@ -87,6 +88,19 @@ def limit_cpu_threads(predictor):
     """YOLO 초기화가 덮어쓴 CPU 병렬도를 추론 시작 시 복원한다."""
     if predictor.device.type == "cpu" and torch.get_num_threads() > 2:
         torch.set_num_threads(2)
+
+
+def encode_event_image(frame):
+    height, width = frame.shape[:2]
+    scale = min(1, 640 / width, 480 / height)
+    if scale < 1:
+        frame = cv2.resize(frame, (max(1, round(width * scale)), max(1, round(height * scale))),
+                           interpolation=cv2.INTER_AREA)
+    try:
+        ok, jpeg = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 75])
+    except cv2.error:
+        return None
+    return base64.b64encode(jpeg.tobytes()).decode("ascii") if ok and jpeg.nbytes <= IMAGE_LIMIT else None
 
 
 class SourceError(RuntimeError):
@@ -659,10 +673,13 @@ def analyze(api, camera_id, threshold, job=None):
                         "evidence": {"reason": reason},
                     }
                 bag_episodes = bag_transfer.active if bag_transfer else None
-                for tid, kind, method in episodes.started(candidates, pts, bag_episodes):
+                new_events = episodes.started(candidates, pts, bag_episodes)
+                jpeg = encode_event_image(frame) if new_events else None
+                photo = {"image_jpeg": jpeg} if jpeg is not None else {}
+                for tid, kind, method in new_events:
                     details = candidates[(tid, kind, method)]
                     api.request("POST", path + "/events", {
-                        **lease, **details, "event_type": kind, "detection_method": method,
+                        **lease, **details, **photo, "event_type": kind, "detection_method": method,
                         "track_id": str(tid) if tid is not None else None, "producer_event_key": f"{frame_count}:{tid}:{kind}:{method}",
                         "detected_at": datetime.now(timezone.utc).isoformat(),
                         "source_time_ms": round(pts), "source_frame_index": frame_count,

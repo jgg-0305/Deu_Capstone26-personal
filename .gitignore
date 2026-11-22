@@ -9,6 +9,7 @@ __pycache__/
 # 카카오 인증 정보는 로컬에서만 보관
 /kakao_tokens.json
 /kakao_local_config.json
+/.local-kakao/
 *.token
 .env
 

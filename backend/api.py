@@ -7,12 +7,13 @@ import secrets
 import subprocess
 import sys
 from typing import Annotated, Literal
+from urllib.parse import urlencode, urlsplit
 from uuid import UUID, uuid4
 
 import anyio
 from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection, Error, OperationalError
 from psycopg.errors import ForeignKeyViolation, UndefinedColumn, UndefinedTable, UniqueViolation
@@ -22,6 +23,8 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstrai
 from backend.analysis_media import FRAME_LIMIT, frame_path, read_snapshot, replace_frame
 from backend.behavior_upload import MAX_MODEL_BYTES, MODEL_DIR, UPLOAD_PREFIX, bundled_rgb_artifact
 from backend.db import DatabaseConfigurationError, connect
+from backend import kakao_notify
+from backend.kakao_images import IMAGE_BASE64_LIMIT, decode_jpeg, valid_signature
 from backend.live import BOUNDARY, frames, public_rtsp_url, resolve_camera
 from backend.passwords import hasher, test_admin_enabled, verify_password
 from backend.pose_upload import pose_artifacts, register_pose_upload
@@ -34,6 +37,8 @@ FRONTEND_DIST = ROOT / "frontend" / "dist"
 bearer = HTTPBearer(auto_error=False)
 SESSION_COOKIE = "cctv_session"
 SESSION_HOURS = 24
+KAKAO_CALLBACK = "/kakao/callback"
+KAKAO_STATE_COOKIE = "cctv_kakao_state"
 MODEL_VALIDATION_LIMITER = anyio.CapacityLimiter(1)
 
 
@@ -284,6 +289,7 @@ class EventInput(Lease):
     source_time_ms: int | None = Field(default=None, ge=0, le=2**63 - 1)
     source_frame_index: int | None = Field(default=None, ge=0, le=2**63 - 1)
     source_end_time_ms: int | None = Field(default=None, ge=0, le=2**63 - 1)
+    image_jpeg: str | None = Field(default=None, max_length=IMAGE_BASE64_LIMIT, repr=False)
 
     @model_validator(mode="after")
     def validate_detection(self):
@@ -327,8 +333,8 @@ def live():
 
 @app.get("/health/ready")
 def ready(db: Db):
-    if db.execute("SELECT 1 FROM schema_migrations WHERE name = %s",
-                  ("009_worker_presence.sql",)).fetchone() is None:
+    if db.execute("SELECT count(*) AS count FROM schema_migrations WHERE name = ANY(%s)",
+                  (["009_worker_presence.sql", "010_kakao_oauth.sql", "011_kakao_event_images.sql"],)).fetchone()["count"] != 3:
         raise HTTPException(503, "Database migration is required")
     return {"status": "ready"}
 
@@ -385,6 +391,132 @@ def login(data: LoginInput, request: Request, response: Response, db: Db):
 @app.get("/api/v1/auth/me")
 def me(user: User):
     return public_user(user)
+
+
+def kakao_settings():
+    key = os.getenv("CCTV_KAKAO_REST_API_KEY", "").strip()
+    if not key:
+        try:
+            key = json.loads((ROOT / "kakao_local_config.json").read_text(
+                encoding="utf-8-sig")).get("rest_api_key", "")
+        except (OSError, ValueError, AttributeError):
+            key = ""
+    redirect = os.getenv("CCTV_KAKAO_REDIRECT_URI", "http://127.0.0.1:8000/kakao/callback")
+    try:
+        parts = urlsplit(redirect)
+        loopback = parts.scheme == "http" and parts.hostname in {"localhost", "127.0.0.1", "::1"}
+        if (not isinstance(key, str) or not key.strip() or not parts.hostname or parts.username is not None
+                or parts.path != KAKAO_CALLBACK or parts.query or parts.fragment
+                or (parts.scheme != "https" and not loopback)):
+            return None
+    except ValueError:
+        return None
+    return key.strip(), redirect
+
+
+def kakao_state_digest(value):
+    return hashlib.sha256(value.encode()).hexdigest()
+
+
+@app.get("/api/v1/kakao/status")
+def kakao_status(user: Owner, db: Db):
+    linked = db.execute("""
+        SELECT 1 FROM oauth_accounts WHERE user_id = %s AND provider = 'kakao'
+            AND is_enabled AND token_secret_ref = %s
+    """, (user["id"], kakao_notify.REF + str(user["id"]))).fetchone()
+    return {"connected": linked is not None, "configured": kakao_settings() is not None,
+            "allowed": not user["is_test_admin"]}
+
+
+@app.post("/api/v1/kakao/login")
+def kakao_login(request: Request, response: Response, user: Owner, db: Db):
+    if user["is_test_admin"]:
+        raise HTTPException(403, "일반 관제 계정에서 카카오톡을 연결하세요.")
+    settings = kakao_settings()
+    if settings is None:
+        raise HTTPException(503, "서버에서 카카오 REST API 키와 콜백 주소를 설정하세요.")
+    key, redirect = settings
+    destination = urlsplit(redirect)
+    origin = urlsplit(str(request.base_url))
+    if (destination.scheme, destination.netloc) != (origin.scheme, origin.netloc):
+        raise HTTPException(409, "카카오에 등록한 콜백과 같은 도메인·포트에서 관제 화면을 여세요.")
+    state = secrets.token_urlsafe(32)
+    db.execute("DELETE FROM kakao_oauth_states WHERE expires_at <= clock_timestamp()")
+    db.execute("""
+        INSERT INTO kakao_oauth_states (state_hash, session_id, expires_at)
+        VALUES (%s, %s, clock_timestamp() + interval '10 minutes')
+        ON CONFLICT (session_id) DO UPDATE SET state_hash = EXCLUDED.state_hash, expires_at = EXCLUDED.expires_at
+    """, (kakao_state_digest(state), user["session_id"]))
+    response.set_cookie(KAKAO_STATE_COOKIE, state, max_age=600, path=KAKAO_CALLBACK,
+                        httponly=True, samesite="lax", secure=destination.scheme == "https")
+    return {"url": "https://kauth.kakao.com/oauth/authorize?" + urlencode({
+        "client_id": key, "redirect_uri": redirect, "response_type": "code",
+        "state": state, "scope": "talk_message", "prompt": "select_account",
+    })}
+
+
+@app.get(KAKAO_CALLBACK, include_in_schema=False)
+def kakao_callback(request: Request, db: Db, state: str = "", code: str = "", error: str = ""):
+    def back(status, *, clear=True):
+        response = RedirectResponse("/?kakao=" + status, status_code=303,
+                                    headers={"Referrer-Policy": "no-referrer"})
+        if clear:
+            response.delete_cookie(KAKAO_STATE_COOKIE, path=KAKAO_CALLBACK, samesite="lax")
+        return response
+
+    cookie = request.cookies.get(KAKAO_STATE_COOKIE, "")
+    state_hash = kakao_state_digest(state) if 0 < len(state) <= 128 else ""
+    if not cookie or not state_hash or not secrets.compare_digest(kakao_state_digest(cookie), state_hash):
+        return back("expired", clear=False)
+    pending = db.execute("""
+        DELETE FROM kakao_oauth_states WHERE state_hash = %s AND expires_at > clock_timestamp()
+        RETURNING session_id
+    """, (state_hash,)).fetchone()
+    # 성공 여부와 무관하게 같은 카카오 콜백을 다시 사용하지 못하게 한다.
+    db.commit()
+    if pending is None:
+        return back("expired")
+    if error or not code or len(code) > 2048:
+        return back("cancelled")
+    settings = kakao_settings()
+    if settings is None:
+        return back("failed")
+    account_sql = """
+        SELECT u.id FROM auth_sessions s JOIN users u ON u.id = s.user_id
+        WHERE s.id = %s AND s.revoked_at IS NULL AND s.expires_at > clock_timestamp()
+          AND u.is_active AND u.disabled_at IS NULL AND u.role = 'owner' AND NOT u.is_test_admin
+    """
+    owner = db.execute(account_sql, (pending["session_id"],)).fetchone()
+    db.commit()
+    if owner is None:
+        return back("expired")
+    key, redirect = settings
+    data = {"grant_type": "authorization_code", "client_id": key, "redirect_uri": redirect, "code": code}
+    secret = os.getenv("CCTV_KAKAO_CLIENT_SECRET", "").strip()
+    if secret:
+        data["client_secret"] = secret
+    try:
+        with kakao_notify.requests.Session() as session:
+            result = kakao_notify.request(session, "POST", kakao_notify.TOKEN, data=data)
+            tokens = {"access_token": result["access_token"], "rest_api_key": key,
+                      "refresh_token": result.get("refresh_token"), "client_secret": secret}
+            subject = kakao_notify.identity(session, tokens)
+            scopes = kakao_notify.request(
+                session, "GET", "https://kapi.kakao.com/v2/user/scopes",
+                headers=kakao_notify.bearer(tokens), params={"scopes": '["talk_message"]'},
+            ).get("scopes") or []
+            if not any(scope.get("id") == "talk_message" and scope.get("agreed") is True for scope in scopes):
+                return back("permission")
+        if db.execute(account_sql + " FOR SHARE OF s, u", (pending["session_id"],)).fetchone() is None:
+            return back("expired")
+        kakao_notify.save_link(db, owner["id"], subject, tokens)
+    except kakao_notify.KakaoError as exc:
+        if str(exc) == "kakao_account_already_linked":
+            return back("linked_elsewhere")
+        return back("failed")
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
+        return back("failed")
+    return back("connected")
 
 
 @app.post("/api/v1/auth/logout", status_code=204)
@@ -918,6 +1050,8 @@ def events(user: User, db: Db, camera_id: UUID | None = None,
                e.detection_method, e.model_score, e.score_model_role, e.rule_code,
                e.rule_version, e.evidence, e.detected_at, e.occurred_at, e.source_time_ms,
                e.source_frame_index, e.source_end_time_ms, review.decision,
+               (SELECT status FROM notification_deliveries
+                WHERE event_id = e.id AND recipient_user_id = c.owner_id AND channel = 'kakao') AS kakao_status,
                r.config_snapshot->'behavior_threshold' AS behavior_threshold,
                r.config_snapshot->'event_threshold' AS event_threshold,
                (SELECT id FROM media_assets WHERE run_id = r.id
@@ -1112,7 +1246,7 @@ def start_run(data: RunInput, authorized: Worker, db: Db):
 
 def lock_run(db, run_id, lease_token, *, active=True):
     row = db.execute("""
-        SELECT r.status, r.config_snapshot, c.owner_id, r.camera_id,
+        SELECT r.status, r.config_snapshot, c.owner_id, r.camera_id, c.source_type,
                r.lease_expires_at > clock_timestamp() AS lease_valid
         FROM inference_runs r JOIN cameras c ON c.id = r.camera_id
         WHERE r.id = %s AND r.lease_token = %s FOR UPDATE OF r
@@ -1172,7 +1306,7 @@ def finish(run_id: UUID, data: RunFinish, authorized: Worker, db: Db):
 @app.post("/internal/v1/runs/{run_id}/events")
 def ingest(run_id: UUID, data: EventInput, authorized: Worker, db: Db, response: Response):
     run = lock_run(db, run_id, data.lease_token, active=False)
-    payload = data.model_dump(mode="json", exclude={"lease_token"})
+    payload = data.model_dump(mode="json", exclude={"lease_token", "image_jpeg"})
     digest = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
     existing = db.execute("""
         SELECT id, payload_sha256 FROM detection_events
@@ -1203,13 +1337,40 @@ def ingest(run_id: UUID, data: EventInput, authorized: Worker, db: Db, response:
               Jsonb(payload["evidence"] or {}))).fetchone()
     except ForeignKeyViolation:
         raise HTTPException(422, "The scoring model is not registered on this run") from None
-    if data.detection_method != "model" or data.model_score >= run["config_snapshot"].get("alert_threshold", 0.9):
-        db.execute("""
+    notify_source = run["source_type"] in {"rtsp", "webcam"} or os.getenv("CCTV_KAKAO_INCLUDE_FILES") == "1"
+    if notify_source and (data.detection_method != "model" or
+                          data.model_score >= run["config_snapshot"].get("alert_threshold", 0.9)):
+        delivery = db.execute("""
             INSERT INTO notification_deliveries
                 (event_id, recipient_user_id, oauth_account_id, channel)
             SELECT %s, user_id, id, provider FROM oauth_accounts
             WHERE user_id = %s AND is_enabled AND provider = 'kakao'
+              AND token_secret_ref = 'local-kakao:' || user_id::text
             ORDER BY created_at, id LIMIT 1
-        """, (event["id"], run["owner_id"]))
+            ON CONFLICT (event_id, recipient_user_id, channel) DO NOTHING
+            RETURNING id
+        """, (event["id"], run["owner_id"])).fetchone()
+        if delivery and data.image_jpeg is not None:
+            try:
+                jpeg = decode_jpeg(data.image_jpeg)
+            except ValueError:
+                # 사진이 손상돼도 사건과 텍스트 알림은 유지한다.
+                pass
+            else:
+                db.execute("INSERT INTO kakao_event_images (event_id, jpeg) VALUES (%s, %s)", (event["id"], jpeg))
     response.status_code = 201
     return event
+
+
+@app.get("/kakao/event-images/{event_id}.jpg", include_in_schema=False)
+def kakao_event_image(event_id: UUID, expires: int, sig: Annotated[str, Query(max_length=64)], db: Db):
+    if not valid_signature(event_id, expires, sig):
+        raise HTTPException(404, "사진을 찾을 수 없습니다.")
+    row = db.execute("""
+        SELECT i.jpeg FROM kakao_event_images i JOIN detection_events e ON e.id = i.event_id
+        WHERE i.event_id = %s AND i.expires_at > clock_timestamp() AND e.deleted_at IS NULL
+    """, (event_id,)).fetchone()
+    if row is None:
+        raise HTTPException(404, "사진을 찾을 수 없습니다.")
+    return Response(content=bytes(row["jpeg"]), media_type="image/jpeg",
+                    headers={"Referrer-Policy": "no-referrer"})

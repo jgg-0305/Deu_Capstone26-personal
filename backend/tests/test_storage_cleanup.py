@@ -1,21 +1,27 @@
 """독립 PostgreSQL 스키마와 임시 파일로 삭제 권한·공유 영상·실패 복구를 검증한다."""
 
 from contextlib import contextmanager
+import base64
 from datetime import datetime, timezone
 import hashlib
 import os
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from urllib.parse import parse_qs, urlsplit
 from uuid import uuid4
 
 import psycopg
+import numpy as np
 from psycopg import sql
 from psycopg.rows import dict_row
 from fastapi.testclient import TestClient
 
 from backend.api import app, database
+from backend.kakao_notify import deliver_next
+from backend.kakao_images import signed_url
+from backend.worker import encode_event_image
 from backend.storage import managed_path, prepare_purge
 
 
@@ -89,15 +95,108 @@ class StorageCleanupTests(unittest.TestCase):
         (self.folder / f"{run['id']}.timeline.jsonl").write_bytes(b'{}\n')
         return {'camera': str(camera), 'run': str(run['id']), 'lease': str(run['lease_token']), 'media': str(media), 'filename': filename}
 
-    def event(self, source):
+    def event(self, source, photo=None):
         body = {'lease_token': source['lease'], 'producer_event_key': uuid4().hex,
                 'event_type': 'theft_suspected', 'detection_method': 'rule', 'rule_code': 'stand_pos',
                 'rule_version': 'stand-pos-v1', 'detected_at': datetime.now(timezone.utc).isoformat(),
                 'evidence': {'reason': 'pos_timeout'}}
+        if photo is not None:
+            body["image_jpeg"] = photo
         response = self.client.post('/internal/v1/runs/' + source['run'] + '/events', json=body,
                                     headers={'Authorization': 'Bearer worker-token-for-storage-tests-only'})
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()['id'], body
+
+    def test_kakao_live_event_is_queued_once_and_sent_without_network(self):
+        source = self.source()
+        with self.db() as db:
+            db.execute("""
+                INSERT INTO oauth_accounts (user_id, provider, provider_subject, token_secret_ref)
+                VALUES (%s, 'kakao', '123', %s)
+            """, (self.owner, 'local-kakao:' + str(self.owner)))
+        file_event, _ = self.event(source)
+        with self.db() as db:
+            self.assertIsNone(db.execute("SELECT status FROM notification_deliveries WHERE event_id = %s",
+                                         (file_event,)).fetchone())
+            db.execute("""
+                UPDATE cameras SET source_type = 'rtsp', source_storage_key = NULL,
+                    source_uri = 'rtsp://127.0.0.1:8554/sample' WHERE id = %s
+            """, (source['camera'],))
+        event, body = self.event(source)
+        replay = self.client.post('/internal/v1/runs/' + source['run'] + '/events', json=body,
+                                  headers={'Authorization': 'Bearer worker-token-for-storage-tests-only'})
+        self.assertEqual(replay.json()['id'], event)
+        with self.db() as db, patch('backend.kakao_notify.send') as send:
+            self.assertTrue(deliver_next(db, Mock(), 'https://example.test'))
+            self.assertFalse(deliver_next(db, Mock(), 'https://example.test'))
+            send.assert_called_once()
+            delivery = db.execute("SELECT status, attempt_count FROM notification_deliveries WHERE event_id = %s",
+                                  (event,)).fetchone()
+            self.assertEqual(delivery, {'status': 'sent', 'attempt_count': 1})
+        events = self.client.get('/api/v1/events').json()
+        self.assertEqual(next(row['kakao_status'] for row in events if row['id'] == event), 'sent')
+
+    def test_kakao_image_requires_signature_and_disappears_on_event_deletion(self):
+        source = self.source()
+        with self.db() as db:
+            db.execute("""
+                INSERT INTO oauth_accounts (user_id, provider, provider_subject, token_secret_ref)
+                VALUES (%s, 'kakao', '123', %s)
+            """, (self.owner, 'local-kakao:' + str(self.owner)))
+        photo = encode_event_image(np.zeros((1080, 1920, 3), dtype=np.uint8))
+        with patch.dict(os.environ, {
+            'CCTV_KAKAO_INCLUDE_FILES': '1',
+            'CCTV_KAKAO_IMAGE_BASE_URL': 'https://test.example.com',
+            'CCTV_KAKAO_IMAGE_SECRET': 'test-image-secret-not-for-production',
+        }):
+            event_id, _ = self.event(source, photo)
+            with self.db() as db, patch('backend.kakao_notify.send') as send:
+                self.assertTrue(deliver_next(db, Mock(), 'https://example.test'))
+                delivery = send.call_args.args[1]
+                link = signed_url(delivery['event_id'], delivery['image_expires_at'])
+            url = urlsplit(link)
+            endpoint = url.path + '?' + url.query
+            unauthenticated = TestClient(app, raise_server_exceptions=False)
+            self.addCleanup(unauthenticated.close)
+            image = unauthenticated.get(endpoint)
+            self.assertEqual(image.headers['content-type'], 'image/jpeg')
+            self.assertEqual(image.content, base64.b64decode(photo))
+            params = parse_qs(url.query)
+            params['sig'] = '0' * 64
+            invalid = unauthenticated.get(url.path, params=params)
+            self.assertEqual(invalid.status_code, 404)
+            self.assertEqual(self.client.delete('/api/v1/events/' + event_id).status_code, 204)
+            self.assertEqual(unauthenticated.get(endpoint).status_code, 404)
+            with self.db() as db:
+                self.assertIsNone(db.execute("SELECT event_id FROM kakao_event_images WHERE event_id = %s",
+                                             (event_id,)).fetchone())
+
+    def test_kakao_callback_checks_state_and_connects_only_once(self):
+        origin = 'http://127.0.0.1:8000'
+        with TestClient(app, base_url=origin) as browser, patch.dict(os.environ, {
+            'CCTV_KAKAO_REST_API_KEY': 'mock-app-key', 'CCTV_KAKAO_REDIRECT_URI': origin + '/kakao/callback',
+        }), patch('backend.kakao_notify.SECRET_DIR', self.folder), patch('backend.kakao_notify.request') as kakao:
+            browser.cookies.set('cctv_session', self.token)
+            pending = browser.post('/api/v1/kakao/login', headers={'X-CCTV-Request': '1'})
+            self.assertEqual(pending.status_code, 200, pending.text)
+            redirect = urlsplit(pending.json()['url'])
+            self.assertEqual((redirect.scheme, redirect.hostname), ('https', 'kauth.kakao.com'))
+            params = parse_qs(redirect.query)
+            self.assertEqual(params['scope'], ['talk_message'])
+            state = params['state'][0]
+
+            bad = browser.get('/kakao/callback', params={'state': 'wrong', 'code': 'code'}, follow_redirects=False)
+            self.assertEqual(bad.headers['location'], '/?kakao=expired')
+            kakao.assert_not_called()
+
+            kakao.side_effect = [{'access_token': 'mock-access', 'refresh_token': 'mock-refresh'},
+                                 {'id': 123}, {'scopes': [{'id': 'talk_message', 'agreed': True}]}]
+            good = browser.get('/kakao/callback', params={'state': state, 'code': 'code'}, follow_redirects=False)
+            self.assertEqual(good.headers['location'], '/?kakao=connected', good.text)
+            self.assertTrue(browser.get('/api/v1/kakao/status').json()['connected'])
+            replay = browser.get('/kakao/callback', params={'state': state, 'code': 'code'}, follow_redirects=False)
+            self.assertEqual(replay.headers['location'], '/?kakao=expired')
+            self.assertEqual(kakao.call_count, 3)
 
     def test_event_delete_keeps_video_and_retry_cannot_restore_event(self):
         source = self.source()
