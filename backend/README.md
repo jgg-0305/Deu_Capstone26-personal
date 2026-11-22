@@ -69,6 +69,18 @@ python -m backend.worker --serve
 
 macOS와 Windows 모두 모델 설정의 **YOLO 포즈 모델 파일 첨부 (.pt)**에서 프로젝트가 검증한 YOLO11n/s/m Pose 파일을 등록할 수 있다. 첨부 후 모델이 선택되며, 기존 영상에는 **다시 분석**으로 적용한다. 일반 객체 검출용 `yolo11m.pt`와 등록 목록에 없는 가중치는 지원하지 않는다.
 
+같은 영상의 Windows·macOS 결과를 비교할 때는 포즈·행동 모델과 분석 임계값 외에 **상품/가방 추적 모델**도 맞춘다. 신뢰하는 원본 가중치만 사용한다. 두 OS 모두 프로젝트의 `.local-models/article.pt`를 상품 추적에 사용한다. Windows에서 `CCTV_ARTICLE_MODEL`을 설정했다면 그 파일을 Mac의 이 경로에 복사한다. 가방 추적을 사용한다면 `.local-models/yolo11s-bag.pt`도 복사한다. 가방 추적은 상품 가중치와 YOLO11m Pose를 함께 사용할 때 적용된다. 실행 결과의 장치, 보조 모델 해시, 관절 버퍼 초기화 횟수로 두 환경을 비교할 수 있다.
+
+- macOS에서 가중치 해시 확인은 `shasum -a 256 .local-models/article.pt`로 한다.
+- Windows PowerShell에서 가중치 해시 확인은 `Get-FileHash -Algorithm SHA256 .\.local-models\article.pt`로 한다.
+
+상품 추적을 켜고 다시 분석하면 파일 영상의 실행별 타임라인에 상품 진단이 기록된다. 같은 영상의 날짜별·OS별 실행 ID로 조회한다. 실행 ID는 PostgreSQL의 `inference_runs.id` 또는 해당 영상의 `timeline` 요청에 붙은 `run_id`에서 확인한다.
+
+- macOS: `.venv-web/bin/python -m backend.article_trace RUN_ID --from-sec 0 --to-sec 60`
+- Windows PowerShell: `& .\.venv-web\Scripts\python.exe -m backend.article_trace RUN_ID --from-sec 0 --to-sec 60`
+
+`detections`는 상품 검출 후 남은 후보 수, `linked`는 손에 연결된 후보 수다. `rejections`는 손과의 거리·신뢰도·외형 등 조건별 탈락 수를 보여준다. `hands`의 `concealment_rejected`는 손에 연결된 상품이 사라졌을 때 손 위치 또는 이동·은닉 조건을 충족하지 못했음을 뜻한다. `raw_suspects`와 `accepted_suspects`가 다르면 추적 규칙이 찾은 후보가 최종 행동 판정과 함께 평가되는 단계에서 제외된 것이다. 첫 줄에는 장치 정밀도, 라이브러리 버전, 가중치 식별 정보가 나온다.
+
 포트에 기존 Uvicorn이 실행 중이면 실행 터미널에서 `Ctrl+C`로 종료한 뒤 API와 워커를 함께 시작한다. 단독 Uvicorn을 유지할 때는 동일 DB 환경과 워커 토큰을 적용한 별도 터미널에서 워커를 실행한다.
 
 - macOS: `source .venv-web/bin/activate` 후 `python -m backend.run_local`
@@ -349,58 +361,10 @@ npm.cmd --prefix frontend run build
 ```powershell
 & .\.venv-web\Scripts\python.exe -m backend.worker --serve
 ```
-
-macOS Terminal:
- db서버 실행 
- 
-/private/tmp/deu-postgres-phase1/package/native/bin/pg_ctl \
-  -D .local-db/data \
-  -l .local-db/postgres.log \
-  -o "-c listen_addresses= -k /private/tmp/deu-cctv-local-db -p 55432 -c unix_socket_permissions=0700" \
-  start
-
-source .local-db/web.env
-
-
-python -m backend.manage migrate
-
-
-
-# DB가 실행 중이면 먼저 중지
-/private/tmp/deu-postgres-phase1/package/native/bin/pg_ctl \
-  -D .local-db/data stop
-
-# localhost의 TCP 55432 포트로 실행
-/private/tmp/deu-postgres-phase1/package/native/bin/pg_ctl \
-  -D .local-db/data \
-  -l .local-db/postgres.log \
-  -o "-c listen_addresses=127.0.0.1 -k /private/tmp/deu-cctv-local-db -p 55432 -c unix_socket_permissions=0700" \
-  start
-
-
-"$(brew --prefix postgresql@18)/bin/pg_ctl" -D .local-db/data -l .local-db/postgres.log -o "-c listen_addresses=127.0.0.1 -k /private/tmp/deu-cctv-local-db -p 55432 -c unix_socket_permissions=0700" start
-source .venv-web/bin/activate
-source .local-db/web.env
-python -m backend.manage migrate
-
-
+macOS Terminal (기존 `.local-db` 환경):
 
 ```bash
-export CCTV_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:5432/cctv'
-source .venv-web/bin/activate
-python -c 'import os; print("CCTV_DATABASE_URL:", "설정됨" if os.environ.get("CCTV_DATABASE_URL") else "없음")'
-if [ -f .local-db/web.env ]; then source .local-db/web.env; fi
-python -m backend.manage migrate
-npm --prefix frontend run build
-python -m backend.run_local --port 8000
-
-# python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
+bash backend/run_local_mac.sh --port 8000
 ```
 
-별도 터미널에서 같은 가상 환경과 워커 토큰을 불러와 실행한다.
-
-```bash
-source .venv-web/bin/activate
-if [ -f .local-db/web.env ]; then source .local-db/web.env; fi
-python -m backend.worker --serve
-```
+이 명령은 기존 PostgreSQL을 55432 Unix 소켓으로 시작하고 `.local-db/web.env`의 설정으로 웹 서버와 워커를 실행한다. 이 Mac의 `cctv_local` 역할은 소켓으로 접속하므로 별도 비밀번호나 TCP 5432 포트 설정이 필요 없다.

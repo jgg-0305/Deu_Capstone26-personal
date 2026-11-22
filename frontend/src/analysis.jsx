@@ -194,6 +194,12 @@ export function ModelStatus({ source, snapshot }) {
           : snapshot.frame_duration_ms > 0
             ? ` · 분류 입력 ${(snapshot.frame_duration_ms * 30 / 1000).toFixed(1)}초` : "")}
     </span>}
+    {snapshot?.auxiliary_models && snapshot.run_id === source.run_id &&
+      !["queued", "starting"].includes(source.status) && <span>
+        실행 장치 {snapshot.device} · 상품 추적 {snapshot.auxiliary_models.article?.slice(0, 12) || "미사용"}
+        {" · 가방 추적 "}{snapshot.auxiliary_models.bag?.slice(0, 12) || "미사용"}
+        {" · 관절 버퍼 초기화 "}{snapshot.buffer_reset_count ?? 0}회
+      </span>}
     {source.pose_model && !["queued", "starting"].includes(source.status) &&
       <span>{modelNames[source.pose_model]} · {modelNames[source.behavior_model] || source.behavior_filename}</span>}
   </div>;

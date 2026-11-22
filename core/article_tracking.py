@@ -99,6 +99,7 @@ class ArticleTracker:
         self.bridged_frames = 0
         self.weak_bridged_frames = 0
         self.reacquired_tracks = 0
+        self.trace = None
 
     def needs_frame(self, now):
         return self.slot != int(now * 3 + 1e-6)
@@ -108,6 +109,7 @@ class ArticleTracker:
         self.active.clear()
         self.slot = None
         self.gray = None
+        self.trace = None
 
     def update(self, tracks, detections, now, frame=None):
         # The article training data is 3 FPS. Limit the state machine to this cadence.
@@ -133,15 +135,18 @@ class ArticleTracker:
         visible_hands = {(track['track_id'], wrist) for track in tracks
                          if track.get('observed', True) and track.get('keypoints') is not None
                          for wrist in (9, 10) if track['keypoints'][wrist, 2] >= .55} if strict_pocket else set()
+        previous_keys = set(self.tracks)
         self.tracks = {key: state for key, state in self.tracks.items()
                        if now - state.last <= 1.34 or
                        (key in visible_hands and state.hits >= carry_minimum and state.last_item_hip_distance is not None
                         and state.last_item_hip_distance >= .23 and now - state.last <= carry_deadline)}
+        expired = sorted(previous_keys - self.tracks.keys())[:32]
         recovery_hits = 2 if self.continuous_carry else 3
         recovery_gap = .50 if self.continuous_carry else .70
         candidates = []
         weak_candidates = []
         hands = {}
+        rejections = dict.fromkeys(("distance", "score", "drift", "appearance", "continuity"), 0)
         for track in tracks:
             if not track.get('observed', True) or track.get('keypoints') is None:
                 continue
@@ -160,15 +165,18 @@ class ArticleTracker:
                     offset = ((cx-x)/scale, (cy-y)/scale)
                     distance = hypot(*offset)
                     if distance > .22 or score < minimum_score:
+                        rejections["distance" if distance > .22 else "score"] += 1
                         continue
                     state = self.tracks.get(key)
                     drift = hypot(offset[0]-state.offset[0], offset[1]-state.offset[1]) if state else 0.
                     if state and drift > .19:
+                        rejections["drift"] += 1
                         continue
                     visual = float(cv2.compareHist(state.appearance, appearance, cv2.HISTCMP_BHATTACHARYYA)) if state else 0.
                     latest_visual = (float(cv2.compareHist(state.last_appearance, appearance, cv2.HISTCMP_BHATTACHARYYA))
                                      if recover_compressed and state and state.last_appearance is not None else visual)
                     if visual > .80:
+                        rejections["appearance"] += 1
                         continue
                     overlap = 0.
                     pocket_reacquired = False
@@ -201,6 +209,7 @@ class ArticleTracker:
                                 and .50 * prior_area <= area <= 2. * prior_area
                             )
                         if state.bridge_frames and overlap < .12 and visual > .45 and not (pocket_reacquired or resumed_carry):
+                            rejections["continuity"] += 1
                             continue
                     supported_carry = (
                         recover_compressed and state is not None and state.hits >= 2 and now - state.last <= .70
@@ -214,6 +223,8 @@ class ArticleTracker:
                         if (score >= .30 and state and now-state.last <= .70 and state.bridge_frames < 2
                                 and distance <= .12 and drift <= .08 and visual <= .45):
                             weak_candidates.append((distance+drift+visual, key, index))
+                        else:
+                            rejections["score"] += 1
                         continue
                     # A one-frame reassignment to the other wrist can split a valid carry.
                     # Prefer a strong continuation without ignoring contradictory appearance.
@@ -239,12 +250,18 @@ class ArticleTracker:
             if key not in matches and key not in weak_matches and index not in used:
                 used.add(index)
                 weak_matches[key] = detections[index][0]
+        hand_states = []
         for key, (x, y, scale, hip_distance, hip_center, reliable_wrist) in hands.items():
             state = self.tracks.get(key)
             hip_limit = .15 if strict_pocket else .24
             near_hip = (hip_distance is not None and hip_distance <= hip_limit
                         and (not strict_pocket or reliable_wrist))
+            trace = {"track_id": key[0], "wrist": key[1], "near_hip": bool(near_hip),
+                     "result": "unlinked"}
+            if len(hand_states) < 32:
+                hand_states.append(trace)
             if key in matches:
+                trace["result"] = "linked"
                 center, offset, appearance, box, pocket_reacquired, resumed_carry = matches[key]
                 item_hip = hypot(center[0]-hip_center[0],center[1]-hip_center[1])/scale if hip_center is not None else None
                 if state is None or (not (pocket_reacquired or resumed_carry)
@@ -280,6 +297,7 @@ class ArticleTracker:
                                          else 0)
                 state.last_item_hip_distance = item_hip
             elif key in weak_matches:
+                trace["result"] = "weak_link"
                 state.box, state.wrist = weak_matches[key], (x, y)
                 state.box_slot = slot
                 state.bridge_frames += 1
@@ -298,6 +316,7 @@ class ArticleTracker:
                                 cv2.compareHist(state.appearance, appearance, cv2.HISTCMP_BHATTACHARYYA) > .35):
                             shifted = None
                     if shifted is not None:
+                        trace["result"] = "optical_flow_bridge"
                         state.box, state.wrist = shifted,(x,y)
                         state.box_slot = slot
                         state.bridge_frames += 1
@@ -348,6 +367,16 @@ class ArticleTracker:
                 if near_hip and concealment:
                     self.active[key[0]] = now + 2.0
                     self.tracks.pop(key)
+                trace.update(result="confirmed" if near_hip and concealment else "concealment_rejected",
+                             carry_conditions=bool(concealment), hits=state.hits,
+                             travel=round(state.distance, 3), gap_seconds=round(now-state.last, 3),
+                             pocket_reacquired=bool(state.pocket_reacquired),
+                             last_item_hip_distance=(None if state.last_item_hip_distance is None
+                                                     else round(state.last_item_hip_distance, 3)))
+        self.trace = {"slot": slot, "detections": len(detections), "visible_hands": len(hands),
+                      "top_scores": sorted((round(float(score), 3) for _, score, _ in detections), reverse=True)[:8],
+                      "strong_candidates": len(candidates), "linked": len(matches), "weak_links": len(weak_matches),
+                      "rejections": rejections, "expired_hands": expired, "hands": hand_states}
         return dict(self.active)
 
 

@@ -9,11 +9,33 @@ from torch import nn
 
 from backend.api import AnalysisInput
 from backend.worker import EventEpisodes, RtspMediaClock, analyze
+from core.article_tracking import ArticleTracker
 from core.kpt_behavior_classifier import TrackBehaviorBuffer
 from core.tracking_geometry import match_keypoints
 
 
 class AnalysisRegressionTests(unittest.TestCase):
+    def test_article_trace_distinguishes_detection_link_and_concealment(self):
+        points = np.zeros((17, 3), dtype=np.float32)
+        points[9] = (40, 60, 1)
+        points[11] = (40, 60, 1)
+        people = [{"track_id": 1, "bbox": (0, 0, 100, 100), "keypoints": points}]
+        appearance = np.ones(8, dtype=np.float32)
+        tracker = ArticleTracker(strict_concealment=True)
+
+        self.assertEqual(tracker.update(people, [((85, 85, 95, 95), .8, appearance)], 0), {})
+        self.assertEqual(tracker.trace["detections"], 1)
+        self.assertEqual(tracker.trace["linked"], 0)
+        self.assertEqual(tracker.trace["rejections"]["distance"], 1)
+
+        self.assertEqual(tracker.update(people, [((35, 55, 45, 65), .8, appearance)], 1 / 3), {})
+        self.assertEqual(tracker.trace["linked"], 1)
+        self.assertEqual(tracker.trace["hands"][0]["result"], "linked")
+
+        self.assertEqual(tracker.update(people, [], 2 / 3), {})
+        self.assertEqual(tracker.trace["hands"][0]["result"], "concealment_rejected")
+        self.assertFalse(tracker.trace["hands"][0]["carry_conditions"])
+
     def test_live_vandalism_needs_two_new_predictions_at_the_same_threshold(self):
         model = nn.Identity()
         model.behavior_input_config = {"sample_fps": 3}

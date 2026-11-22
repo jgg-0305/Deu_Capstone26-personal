@@ -81,6 +81,7 @@ class BagTransferTracker:
         self.active = {}
         self.checked_until = {}
         self.slot = None
+        self.trace = None
 
     def update(self, people, detections, now, frame, detector):
         slot = int(now * 3 + 1e-6)
@@ -97,6 +98,8 @@ class BagTransferTracker:
                       if tid in observed and slot - item.slot <= max_gap}
         moving = {}
         matches = {}
+        seeded = []
+        checked = []
         for tid, person in observed.items():
             points = person.get("keypoints")
             if points is None or tid in self.checked_until:
@@ -150,6 +153,7 @@ class BagTransferTracker:
             if seeds:
                 _, box, appearance, wrist = max(seeds, key=lambda candidate: candidate[0])
                 self.items[tid] = ArticleMotion(center(box), box, appearance, slot, wrist, tuple(points[wrist, :2]))
+                seeded.append(tid)
 
         bags = detector.detect(frame, [person for person, _ in moving.values()]) if moving else {}
         for tid, (person, scale) in moving.items():
@@ -182,9 +186,18 @@ class BagTransferTracker:
                     # still looks the same at its last visible position.
                     remaining = article_appearance(frame, item.box)
                     self.checked_until[tid] = now + 2.
-                    if (remaining is not None and
-                            cv2.compareHist(item.appearance, remaining, cv2.HISTCMP_BHATTACHARYYA) >= .60):
+                    appearance_change = (None if remaining is None else
+                                         float(cv2.compareHist(item.appearance, remaining, cv2.HISTCMP_BHATTACHARYYA)))
+                    confirmed = appearance_change is not None and appearance_change >= .60
+                    if confirmed:
                         self.active[tid] = now + 2.
+                    checked.append({"track_id": tid, "confirmed": confirmed,
+                                    "appearance_change": appearance_change})
                     self.items.pop(tid)
                     break
+        self.trace = {"slot": slot, "seeded": sorted(seeded)[:32], "linked": sorted(matches)[:32],
+                      "moving": sorted(moving)[:32],
+                      "bag_detections": {tid: len(bags[tid]) for tid in sorted(bags)[:32]},
+                      "entered_bag": sorted(tid for tid, item in self.items.items() if item.entered_bag is not None)[:32],
+                      "concealment_checked": checked[:32], "active": sorted(self.active)[:32]}
         return set(self.active)

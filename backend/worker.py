@@ -8,10 +8,12 @@ from threading import Event, Thread
 from queue import Empty, Full, Queue
 from datetime import datetime, timezone
 from functools import lru_cache
+from importlib.metadata import version
 import hashlib
 import json
 import math
 import os
+import platform
 import signal
 import time
 from uuid import UUID
@@ -120,6 +122,24 @@ class WorkerClient:
 def model_digest(path, size, mtime_ns):
     with path.open("rb") as file:
         return hashlib.file_digest(file, "sha256").hexdigest()
+
+
+def local_article_model():
+    # 운영자가 설치하는 보조 가중치는 OS에 상관없이 같은 위치에서 찾는다.
+    configured = os.getenv("CCTV_ARTICLE_MODEL", "").strip()
+    path = ROOT / configured if configured else MODEL_DIR / "article.pt"
+    if path.is_file():
+        return path
+    if configured:
+        raise ModelError("CCTV_ARTICLE_MODEL이 가리키는 상품 추적 가중치 파일이 없습니다.")
+    return None
+
+
+def checkpoint_digest(path):
+    if path is None:
+        return None
+    stat = path.stat()
+    return model_digest(path, stat.st_size, stat.st_mtime_ns)
 
 
 def verified_models(api, behavior_model, pose_model="human_pose"):
@@ -418,7 +438,11 @@ def analyze(api, camera_id, threshold, job=None):
     behavior_model = settings.pop("behavior_model", "behavior")
     pose_model = settings.pop("pose_model", "human_pose")
     paths, ids = verified_models(api, behavior_model, pose_model)
-    article_path = os.getenv("CCTV_ARTICLE_MODEL") if behavior_model != "behavior_rgb" else None
+    article_path = local_article_model() if behavior_model != "behavior_rgb" else None
+    bag_path = MODEL_DIR / "yolo11s-bag.pt"
+    use_bag = article_path is not None and pose_model == "human_pose_m" and bag_path.is_file()
+    auxiliary_models = {"article": checkpoint_digest(article_path),
+                        "bag": checkpoint_digest(bag_path) if use_bag else None}
     article_config = {"article_rule_version": ARTICLE_RULE_VERSION} if article_path else {}
     claim = {"job_id": job["id"], "claim_token": job["claim_token"]} if job else {}
     run = api.request("POST", "/runs", {
@@ -448,8 +472,7 @@ def analyze(api, camera_id, threshold, job=None):
         rgb = RgbBehaviorClassifier(paths["behavior"]) if behavior_model == "behavior_rgb" else None
         article_detector = ArticleDetector(article_path) if article_path else None
         rtsp_source = run["source_type"] == "rtsp"
-        bag_path = MODEL_DIR / "yolo11s-bag.pt"
-        bag_detector = BagDetector(bag_path) if article_detector and pose_model == "human_pose_m" and bag_path.is_file() else None
+        bag_detector = BagDetector(bag_path) if use_bag else None
         bag_transfer = BagTransferTracker(recover_compressed=rtsp_source) if bag_detector else None
         bag_suspects = set()
         article_tracker = ArticleTracker(strict_concealment=pose_model == "human_pose_m")
@@ -462,6 +485,7 @@ def analyze(api, camera_id, threshold, job=None):
         article_suspects = set()
         smoking_gate = ArticleSmokingGate()
         deferred_smoking = set()
+        article_trace = None
         behavior = None if rgb else TrackBehaviorBuffer(
             paths["behavior"], abn_conf_thr=threshold, max_missing=settings["max_age"],
             theft_confirmation_threshold=max(.90, threshold, settings["event_threshold"]),
@@ -490,6 +514,12 @@ def analyze(api, camera_id, threshold, job=None):
             if bag_detector:
                 bag_detector.warmup_live()
 
+        runtime = {"os": platform.system(), "arch": platform.machine(), "torch": str(torch.__version__),
+                   "opencv": cv2.__version__, "ultralytics": version("ultralytics"),
+                   "pose_precision": "fp16" if pose.half else "fp32",
+                   "article_precision": ("fp16" if extended_article_tracking and article_detector.device == 0
+                                         else "fp32") if article_detector else None}
+
         def diagnostics():
             classifier = rgb or behavior
             return {
@@ -497,6 +527,9 @@ def analyze(api, camera_id, threshold, job=None):
                 "pose_model": pose_model, "behavior_model": behavior_model,
                 "pose_count": pose_count, "inference_count": classifier.inference_count,
                 "total_frames": run.get("total_frames", 0), "device": str(classifier.device),
+                "auxiliary_models": auxiliary_models,
+                "runtime": runtime,
+                "article_trace": article_trace,
                 "cpu_threads": torch.get_num_threads(),
                 "source_fps": run.get("source_fps"),
                 "frame_duration_ms": round(1000 * settings["detection_interval"] / run["source_fps"], 3) if run.get("source_fps") else None,
@@ -589,6 +622,14 @@ def analyze(api, camera_id, threshold, job=None):
                             )
                         deferred_smoking = smoking_gate.update(rule_candidates, article_suspects, observed_tracks,
                                                                behavior.inference_origins, ARTICLE_ARBITRATION_THRESHOLD)
+                        if due:
+                            article_trace = {
+                                "sample_time_ms": round(pts),
+                                "regular": article_tracker.trace, "pocket": pocket_tracker.trace,
+                                "bag": bag_transfer.trace if bag_transfer else None,
+                                "raw_suspects": sorted(set(article) | set(pocket) | bag_suspects)[:32],
+                                "accepted_suspects": sorted(article_suspects)[:32],
+                            }
                     else:
                         deferred_smoking = set()
                     if smoking_motion:
