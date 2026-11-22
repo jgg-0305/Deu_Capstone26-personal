@@ -339,7 +339,9 @@ $env:CCTV_DATABASE_URL = 'postgresql://cctv_user:0000@127.0.0.1:5432/cctv'
 npm.cmd --prefix frontend ci
 & $Py -m backend.manage migrate
 npm.cmd --prefix frontend run build
-& $Py -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
+& $Py -m backend.run_local --port 8000
+
+# & $Py -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
 ```
 
 별도 PowerShell에서 동일한 워커 토큰을 설정하고 실행한다.
@@ -390,7 +392,9 @@ python -c 'import os; print("CCTV_DATABASE_URL:", "설정됨" if os.environ.get(
 if [ -f .local-db/web.env ]; then source .local-db/web.env; fi
 python -m backend.manage migrate
 npm --prefix frontend run build
-python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
+python -m backend.run_local --port 8000
+
+# python -m uvicorn backend.api:app --host 127.0.0.1 --port 8000
 ```
 
 별도 터미널에서 같은 가상 환경과 워커 토큰을 불러와 실행한다.
