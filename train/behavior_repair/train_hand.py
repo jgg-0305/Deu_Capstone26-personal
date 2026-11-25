@@ -1,4 +1,5 @@
-"""Train on official Training groups and compare models on paired Validation clips."""
+"""관절과 손 영상을 함께 사용하는 분류기를 학습한다. 촬영 그룹을 분리하고 같은 검증 영상에서 포즈 기반 모델과 융합 모델을 비교한다.
+"""
 import argparse
 from collections import Counter, defaultdict
 from hashlib import sha256
@@ -42,7 +43,7 @@ def windows(root, rows):
         normal_before = min(event[1] for event in events)-6
         for tid in {event[0] for event in events if event[0] >= 0 and not event[3]}:
             positions = tracks[tid]
-            # Reuse the pose window eligibility rules used by the runtime.
+            # 실행 코드가 유효한 포즈 창을 고르는 규칙을 재사용한다.
             poses = {f: (box, x[:34]) for f, (box, x) in positions.items()}
             empty = np.zeros(INPUT_SIZE, np.float16)
             intervals = [(start, end) for actor, start, end, conflict in events if actor == tid and not conflict]
@@ -138,7 +139,7 @@ def main():
     paths = {'existing_pose': previous, 'original_v2': models_dir/'output/kpt_behavior.pth'}
     model = HandFusion().cuda()
     model.pose.load_state_dict(TrackBehaviorBuffer._build_and_load(previous).state_dict())
-    # Hold pose constant to isolate the contribution from the new inputs.
+    # 추가 입력의 기여만 확인하기 위해 포즈 입력을 고정한다.
     model.pose.requires_grad_(False)
     optimizer = torch.optim.AdamW((p for p in model.parameters() if p.requires_grad), lr=.001, weight_decay=.01)
     train, val = (windows(args.out, splits[name]) for name in ('train', 'val'))
@@ -162,7 +163,7 @@ def main():
         for x, y in loader:
             x, y = x.cuda().float(), y.cuda()
             context = x[..., 34:]
-            # Drop context for some tracks; prevent reliance on a single cue.
+            # 한 종류의 단서에 의존하지 않도록 일부 트랙에서 주변 영상 특징을 제외한다.
             context[torch.rand(len(x), device=x.device) < .1] = 0
             context[..., 16:] *= torch.empty(len(x), 1, 1, device=x.device).uniform_(.8, 1.2)
             optimizer.zero_grad(set_to_none=True)

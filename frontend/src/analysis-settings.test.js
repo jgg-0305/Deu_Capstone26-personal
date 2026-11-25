@@ -1,3 +1,6 @@
+/*
+ * 영상별 모델과 실행 설정 복원이 올바른지 확인한다. 초기값, 은퇴 모델 제외와 프리셋 적용 후 행동 모델 및 사건 기준을 검사한다.
+ */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { configuredSettings, initialSettings, mediumPoseSettings, settingsForSource, settingsPreset } from "./analysis-settings.js";

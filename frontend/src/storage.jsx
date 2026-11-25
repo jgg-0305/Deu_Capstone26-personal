@@ -1,3 +1,7 @@
+/*
+ * 영상의 저장 용량과 삭제 인터페이스를 제공한다. 삭제 전 사용자가 확인할 수 있게 하고, 처리 결과에 따라 저장 목록과 관제 화면을
+ * 갱신한다.
+ */
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 
 export function sizeText(bytes) {

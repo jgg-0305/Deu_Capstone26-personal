@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# 행동별 학습 영상에서 사람 관절을 뽑는 작업이다. 포즈 검출 결과를 연속 관절 창으로 묶어 분류기 학습용 NPZ로 저장한다.
 """split/data/ 하위 클래스 폴더의 mp4 영상에서 키포인트를 추출해 kpt_*.npz 생성.
 
 폴더 → 라벨 (kpt_common.FOLDER_LABEL_MAP):

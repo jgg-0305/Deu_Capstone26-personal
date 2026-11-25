@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+# 행동 모델 평가 결과를 Word 보고서의 표로 정리한다. 클래스별 성능 수치와 비교 결과를 파일로 제공한다.
 """성능평가 결과 → 논문용 docx 표 생성 (make_report.py 스타일 재사용)."""
 
 from docx import Document

@@ -1,4 +1,6 @@
-"""Detect visible merchandise locally and associate it with a person's hand over time."""
+"""손목 주변 상품을 검출하고 같은 사람의 손에 연결한다. 관측 시각, 손과 상품의 상대 이동, 상품 외관을 함께 확인해 짧은 검출 누락을
+이어간다. 움직인 상품이 가려졌을 때 주변 증거를 검토하고 흡연 후보와의 충돌을 조정한다.
+"""
 from dataclasses import dataclass
 from math import hypot
 
@@ -49,7 +51,7 @@ class Carry:
 
 
 def follow_box(previous_gray, gray, box, wrist_delta, scale):
-    """Propagate the last item box only when local texture and wrist motion agree."""
+    """주변 영상 특징과 손목 이동이 일치할 때만 마지막 상품 상자의 위치를 이어 간다."""
     x1, y1, x2, y2 = map(int, box)
     h, w = gray.shape
     x1, x2 = max(0, x1), min(w, x2+1)
@@ -86,7 +88,7 @@ def follow_box(previous_gray, gray, box, wrist_delta, scale):
 
 
 class ArticleTracker:
-    """Require visible item motion, then a short disappearance near the same hand's hip."""
+    """같은 손에 연결된 상품이 움직인 뒤 골반 가까이에서 짧게 사라졌는지 확인한다."""
     def __init__(self, *, pocket_recovery=False, continuous_carry=False, strict_concealment=False, recover_compressed=False):
         self.pocket_recovery = pocket_recovery
         self.continuous_carry = continuous_carry
@@ -112,7 +114,7 @@ class ArticleTracker:
         self.trace = None
 
     def update(self, tracks, detections, now, frame=None):
-        # The article training data is 3 FPS. Limit the state machine to this cadence.
+        # 상품 학습 자료의 초당 3프레임에 맞춰 추적 상태를 갱신한다.
         slot = int(now * 3 + 1e-6)
         if self.slot is not None and slot < self.slot:
             self.reset()
@@ -218,16 +220,16 @@ class ArticleTracker:
                         and hypot(cx - hip_center[0], cy - hip_center[1]) / scale >= .23
                     )
                     if score < .35 and not supported_carry:
-                        # Weak observations only bridge a recent same-hand detection.
-                        # They cannot start a carry, add hits, or extend the last strong detection.
+                        # 신뢰도가 낮은 검출은 같은 손에서 최근에 확인한 상품의 궤적만 이어 준다.
+                        # 새 추적을 시작하거나 검출 횟수 및 마지막 확실한 검출 시각을 갱신하지 않는다.
                         if (score >= .30 and state and now-state.last <= .70 and state.bridge_frames < 2
                                 and distance <= .12 and drift <= .08 and visual <= .45):
                             weak_candidates.append((distance+drift+visual, key, index))
                         else:
                             rejections["score"] += 1
                         continue
-                    # A one-frame reassignment to the other wrist can split a valid carry.
-                    # Prefer a strong continuation without ignoring contradictory appearance.
+                    # 한 프레임에서 다른 손목에 연결하면 정상적인 상품 궤적이 둘로 갈릴 수 있다.
+                    # 외관이 일치하는지 확인하면서 확실한 기존 연결을 우선한다.
                     continuation = .07 if (state and state.hits >= 2 and now-state.last <= .70
                                             and (overlap >= .25 or visual <= .35)) else 0.
                     wrist_penalty = 0.
@@ -309,8 +311,8 @@ class ArticleTracker:
                         and (short_gap or verify_visibility)):
                     shifted = follow_box(previous_gray,gray,state.box,(x-state.wrist[0],y-state.wrist[1]),scale)
                     if shifted is not None and verify_visibility:
-                        # Continued wrist motion alone can follow the hand after an item
-                        # vanishes. Beyond the short bridge require the detector's appearance.
+                        # 상품이 사라진 뒤에도 손목의 이동만으로 추정 위치가 손을 따라갈 수 있다.
+                        # 짧은 연결 허용 시간을 넘으면 실제 검출에서 상품의 외관을 확인한다.
                         appearance = article_appearance(frame, shifted)
                         if (appearance is None or
                                 cv2.compareHist(state.appearance, appearance, cv2.HISTCMP_BHATTACHARYYA) > .35):
@@ -327,8 +329,8 @@ class ArticleTracker:
                 item_approached = (state.hits >= 4 and state.last_item_hip_distance is not None
                                    and state.last_item_hip_distance <= .15
                                    and state.maximum_item_hip_distance-state.last_item_hip_distance >= .10)
-                # A short carry can be visible relative to the actor even
-                # when its absolute travel is small or a hip-side wrist jitters.
+                # 상품의 절대 이동 거리가 작거나 골반 쪽 손목 좌표가 흔들려도
+                # 인물에 대한 상대 위치의 변화로 짧은 이동을 확인할 수 있다.
                 minimum_close_hits = 3 if self.strict_concealment else 2
                 short_item_carry = (state.hits >= 4 and state.close_item_hits >= minimum_close_hits
                                     and state.distance >= .12
@@ -338,8 +340,8 @@ class ArticleTracker:
                 conventional_carry = (state.hits >= 3 and state.distance >= .20
                                       and (wrist_approached or item_approached))
                 if self.pocket_recovery:
-                    # A smaller part of the item reappeared on the same hand at the
-                    # pocket. Confirm it disappears again while the wrist is nearby.
+                    # 주머니 근처에서 상품의 일부가 같은 손에 다시 작게 보였다.
+                    # 손목이 주변에 있는 동안 이 상품이 다시 사라지는지 확인한다.
                     concealment = (
                         state.pocket_reacquired and state.hits > recovery_hits and state.distance >= .20
                         and state.last_item_hip_distance is not None
@@ -473,7 +475,7 @@ def hand_near_face(track):
 
 
 class SmokingMotionEvidence:
-    """Confirm a hand-to-face motion from distinct live samples for the same person."""
+    """같은 사람을 서로 다른 실시간 프레임에서 관측해 손과 얼굴의 접촉 동작을 확인한다."""
 
     def __init__(self):
         self.slot = None
@@ -501,7 +503,7 @@ class SmokingMotionEvidence:
 
 
 def applicable_article_evidence(predictions, candidates, tracks):
-    """Leave competing non-smoking anomaly predictions intact."""
+    """상품 은닉 후보를 반영할 때 흡연 이외의 이상행동 예측은 유지한다."""
     applicable = set()
     for track in tracks:
         tid = track['track_id']
@@ -510,8 +512,8 @@ def applicable_article_evidence(predictions, candidates, tracks):
         label = predictions.get(tid, (0, 0))[0]
         if label not in (0, 4):
             continue
-        # The concealment alert persists briefly. A newly observed hand-to-face
-        # interaction can coexist with it and supports a smoking prediction.
+        # 은닉 경보는 잠시 유지된다. 이때 새롭게 관측된 손과 얼굴의 근접 동작은
+        # 은닉 경보와 동시에 나타날 수 있으며 흡연 추론의 근거가 된다.
         if label == 4 and hand_near_face(track):
             continue
         applicable.add(tid)
@@ -519,7 +521,7 @@ def applicable_article_evidence(predictions, candidates, tracks):
 
 
 class ArticleSmokingGate:
-    """Keep overridden smoking evidence from being republished on expiry."""
+    """은닉 근거가 만료된 뒤에도 이미 보류한 흡연 결과를 다시 사용하지 않는다."""
     def __init__(self):
         self.blocked = {}
 
@@ -539,8 +541,8 @@ class ArticleSmokingGate:
             elif tid in article_suspects:
                 self.blocked[tid] = revision
             elif tid in self.blocked:
-                # EMA can outlive the contradictory action. Restore smoking
-                # only with a fresh positive window and current face evidence.
+                # 지수 이동 평균에 이전 흡연 점수가 한동안 남을 수 있다.
+                # 새 추론 창과 현재 손·얼굴 근접 근거가 모두 있을 때만 흡연 판정을 복원한다.
                 if (revision > self.blocked[tid] and raw_label == 4 and raw_score >= threshold
                         and hand_near_face(track)):
                     self.blocked.pop(tid)

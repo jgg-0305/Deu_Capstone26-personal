@@ -1,4 +1,5 @@
-"""Add independently grouped YOLO11s training inputs to the full YOLO11n set."""
+"""기존 YOLO11n 학습 자료에 YOLO11s 포즈 시퀀스를 더한다. 클래스와 촬영 그룹을 함께 고려해 추가 영상을 선택한다.
+"""
 import argparse
 from collections import Counter, defaultdict
 import hashlib
@@ -19,7 +20,7 @@ def select(clips, per_class):
         for c in clips:
             if c.label == label:
                 groups[c.group].append(c)
-        # Round robin across filming groups, deterministic and no result-based selection.
+        # 촬영 그룹을 정해진 순서로 번갈아 선택한다. 평가 결과는 선택 조건에 쓰지 않는다.
         pools = [sorted(v, key=lambda c: hashlib.sha256(c.name.encode()).digest())
                  for k, v in sorted(groups.items())]
         n = 0

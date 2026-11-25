@@ -1,4 +1,5 @@
-"""Build a Korean results report strictly from completed evaluation artifacts."""
+"""완료된 재학습과 평가 파일에서 결과를 읽어 한글 보고서 내용을 구성한다. 자료에 기록된 클래스별 결과와 비교 지표를 사용한다.
+"""
 import json
 from pathlib import Path
 

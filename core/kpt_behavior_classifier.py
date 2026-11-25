@@ -1,3 +1,5 @@
+# 사람별 관절 시계열을 모아 행동을 분류한다. 관절을 인물 상자에 상대적인 좌표로 바꾸고, 체크포인트의 입력 규격에 맞춰 윈도우를 만든다.
+# 관측 누락과 재연결 시 이전 추론이 새 증거로 쓰이지 않게 상태를 관리한다.
 """키포인트 기반 이상행동 분류 — KeypointLSTM + 트랙별 슬라이딩 윈도우 버퍼.
 
 YOLO pose 가 추출한 17관절 좌표 시퀀스를 입력으로 받아
@@ -113,7 +115,7 @@ def _encode(kpts, bbox, conf_thr: float = _KPT_CONF_THR) -> np.ndarray:
 
 
 def _observed_low_reach(sequence, frames):
-    """Check whether either visible hand recently reached below its hip."""
+    """최근 관측에서 양손 중 하나가 같은 쪽 골반 아래로 내려갔는지 확인한다."""
     for vector in list(sequence)[-frames:]:
         pose = vector[:34].reshape(17, 2)
         wrists, hips = pose[9:11], pose[11:13]
@@ -161,8 +163,8 @@ class TrackBehaviorBuffer:
 
         self.model = self._build_and_load(model_path)
         self.model.to(self.device).eval()
-        # New checkpoints declare their temporal input contract. Legacy plain
-        # state_dict files retain the original per-call behavior.
+        # 새 체크포인트에는 시간 단위의 입력 규격이 들어 있다.
+        # 상태 사전만 담은 이전 가중치는 호출 시마다 모으던 방식을 유지한다.
         self.input_config = getattr(self.model, "behavior_input_config", {})
         self.sample_fps = self.input_config.get("sample_fps")
         self.confirmation_threshold = (
@@ -192,8 +194,8 @@ class TrackBehaviorBuffer:
         self._arson_probs: dict[int, np.ndarray] = {}
         # 트랙별 행동 클래스와 신뢰도
         self._results: dict[int, tuple] = {}
-        # Per-person inference provenance. Reusing a label between windows
-        # must not make it look like new evidence to event arbitration.
+        # 사람마다 마지막 추론이 생성된 시점을 기록한다.
+        # 추론 창 사이에 표시를 유지하더라도 새 사건 근거로 보지 않는다.
         self.inference_origins: dict[int, tuple[int, int, float]] = {}
         self.inference_count = 0
         self._previous_raw_action: dict[int, tuple[int, float]] = {}
@@ -251,7 +253,7 @@ class TrackBehaviorBuffer:
             index = math.floor(source_seconds * self.sample_fps + 1e-6)
             if self._sample_index is not None:
                 if index < self._sample_index:
-                    # Seeking backwards starts a fresh temporal sequence.
+                    # 되감기가 발생하면 새 관절 시퀀스를 시작한다.
                     for tid in list(self._bufs):
                         self._forget(tid)
                 elif index == self._sample_index:
@@ -262,8 +264,8 @@ class TrackBehaviorBuffer:
                             for tid, value in self._results.items() if tid in visible
                             and sum(bool(item.any()) for item in self._bufs[tid]) >= self.seq_len * .5}
                 else:
-                    # Missing source-time slots must not compress a long gap
-                    # into apparently adjacent motions.
+                    # 원본 시간축에서 관측이 오랫동안 비어 있으면
+                    # 누락 구간 전후 동작을 연속인 것처럼 이어 붙이지 않는다.
                     gap = min(index - self._sample_index - 1, self.max_missing + 1)
                     for _ in range(gap):
                         self._advance([], {})
@@ -314,8 +316,8 @@ class TrackBehaviorBuffer:
                 # 이상행동인데 스무딩 확률이 임계값 미만 → 정상으로 보고 (오경보 억제)
                 if cls != 0 and conf < self.abn_conf_thr:
                     cls, conf = 0, float(probs[0])
-                # Confirm across two fresh windows without modifying the EMA history
-                # or reusing a prediction repeated on intervening video frames.
+                # 새로운 두 추론 창에서 확인하되 지수 이동 평균 기록을 바꾸거나
+                # 중간 영상 프레임에 반복 표시된 예측을 근거로 재사용하지 않는다.
                 self._confirmed_action.pop(tid, None)
                 self._pending_vandalism.discard(tid)
                 if self.confirmation_threshold is not None:
@@ -337,8 +339,8 @@ class TrackBehaviorBuffer:
                     if previous is not None:
                         specialist = self.ema_alpha * previous + (1.0 - self.ema_alpha) * specialist
                     self._arson_probs[tid] = specialist
-                    # Use the former model's arson score only when the retrained
-                    # model independently favors arson and has no confirmed action.
+                    # 재학습 모델도 독립적으로 방화를 가장 높게 평가하고 확정된 행동이 없을 때만
+                    # 이전 모델의 방화 점수를 사용한다.
                     if (cls == 0 and tid not in self._confirmed_action and int(probs.argmax()) == 3 and probs[3] >= .5
                             and specialist[3] >= max(.90, self.abn_conf_thr, self.confirmation_threshold or 0)):
                         self._confirmed_action[tid] = (3, float(specialist[3]))
@@ -374,7 +376,7 @@ class TrackBehaviorBuffer:
         self.reset_count += 1
 
     def reset(self):
-        """Discard temporal state when a camera opens a new connection."""
+        """카메라가 새로 연결되면 이전 영상의 시간 상태를 비운다."""
         for tid in list(self._bufs):
             self._forget(tid)
         self._sample_index = None
@@ -395,7 +397,7 @@ class TrackBehaviorBuffer:
             candidate = {"label": confirmed_label, "score": confirmed_score}
             if confirmed_label == 6:
                 theft_score = confirmed_score
-        # A weak normal argmax is also uncertain, not evidence that nothing happened.
+        # 정상 점수가 가장 높더라도 기준을 충족하지 못하면 미확정으로 둔다.
         if state == "classified" and (candidate["score"] < self.abn_conf_thr or track_id in self._pending_vandalism):
             state = "uncertain"
         return {"collected": len(buf), "required": self.seq_len,
@@ -403,7 +405,7 @@ class TrackBehaviorBuffer:
                 "theft_score": theft_score}
 
     def rule_candidates(self, visible_predictions, minimum):
-        """Use the independently calibrated rule arbitration cutoff."""
+        """규칙과 모델의 경쟁을 조정하는 데 별도로 정한 신뢰도 기준을 적용한다."""
         candidates = {}
         for tid in visible_predictions:
             prob = self._probs.get(tid)

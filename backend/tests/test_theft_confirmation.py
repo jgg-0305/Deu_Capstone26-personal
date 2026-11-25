@@ -1,4 +1,6 @@
-"""Regression coverage for fresh theft confirmation and weak item observations."""
+"""새 추론 창에서 도난을 다시 확인하는 절차와 보조 규칙을 검증한다. 상품과 손 연결, 검출이 잠시 끊긴 경우, 근거 만료와 다른 행동의 확인
+조건을 함께 검사한다.
+"""
 import unittest
 from unittest.mock import patch
 

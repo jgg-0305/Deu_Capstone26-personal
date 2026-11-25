@@ -1,4 +1,5 @@
-"""Prepare synchronized RGB wrist crops and pose traces from AI-Hub 71550."""
+"""사건 인물의 관절과 손목 주변 영상을 같은 시간축에서 추출한다. 추적 및 주석 연결 결과를 검사하고 손 융합 모델의 입력을 저장한다.
+"""
 import argparse
 from collections import defaultdict
 from hashlib import sha256
@@ -78,7 +79,7 @@ def extract(scratch, expected, events, detector, embedder):
     actors, marker_scores = [], []
     for start, end in events:
         actor = match_actor(tracks, start)
-        # End match is for auditing drift and for excluding ambiguous training labels.
+        # 사건 종료 시 추적 연결로 위치 오차를 검토하고 모호한 학습 라벨을 제외한다.
         end_actor = match_actor(tracks, end)
         actors.append((-1 if actor is None else actor, start[0], end[0],
                        int(end_actor is not None and end_actor != actor)))
@@ -153,7 +154,7 @@ def main():
                             expected, events = read_annotation(archive, clip)
                         with ZipFile(clip.video_zip) as archive, archive.open(clip.video) as video:
                             local = unpacked.get(clip.name)
-                            # Verify the unpacked copy against the official ZIP entry before reuse.
+                            # 압축을 푼 복사본을 재사용하기 전에 공식 압축 파일의 항목과 대조한다.
                             if local and local.stat().st_size == clip.video_identity[1]:
                                 import zlib
                                 with local.open('rb') as stream:

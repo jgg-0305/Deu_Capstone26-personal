@@ -1,3 +1,7 @@
+/*
+ * React 관제 화면의 로그인, 소스, 사건 및 메뉴를 연결한다. API 응답을 기준으로 로그인과 작업 상태를 갱신하고, 영상 등록·삭제 및
+ * 모델 변경 결과를 각 화면에 반영한다.
+ */
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./style.css";

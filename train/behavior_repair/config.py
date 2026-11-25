@@ -1,4 +1,5 @@
-"""Paths supplied by run.py, with project-local defaults."""
+"""재학습 단계에서 공유할 데이터와 출력 경로를 결정한다. 실행 도구가 넘긴 환경값을 우선하며 필요한 항목에는 프로젝트 기본 경로를 사용한다.
+"""
 import os
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[2]

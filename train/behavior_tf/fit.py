@@ -1,3 +1,5 @@
+# TensorFlow에서 KeypointLSTM 계열 행동 분류기를 학습한다. 별도 검증 분할로 모델을 평가하고 변환에 사용할 가중치와 성능
+# 기록을 저장한다.
 """TensorFlow로 KeypointLSTM v2를 학습하고 별도 검증 결과를 저장한다."""
 
 import argparse

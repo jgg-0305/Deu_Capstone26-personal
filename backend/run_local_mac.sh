@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# 이 Mac에 준비된 PostgreSQL과 관제 서버를 함께 시작한다.
+# macOS의 프로젝트 전용 PostgreSQL과 웹 관제를 시작한다. 기존 DB 데이터를 Unix 소켓으로 열고, 저장된 접속 설정으로
+# 연결을 확인한 뒤 React를 빌드하여 통합 실행기에 넘긴다.
 set -eo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 

@@ -1,4 +1,5 @@
-"""Freeze the selected candidate, then compare it on untouched test windows."""
+"""선택된 행동 체크포인트를 분리해 둔 시험 자료에서 평가한다. 클래스별 예측과 정상·이상 혼동, 시간 구간별 결과를 함께 집계한다.
+"""
 import argparse
 from collections import Counter
 import hashlib
@@ -65,7 +66,7 @@ def main():
         if windows:
             xs.extend(r[1] for r in windows)
             ys.extend(r[2] for r in windows)
-        # Runtime EMA at 50%, without replacing low scores by forced theft labels.
+        # 실행 코드의 지수 이동 평균을 적용한다. 낮은 점수에 임의로 절도 라벨을 부여하지 않는다.
         record={'clip':clip.name,'group':clip.group,'label':LABELS[clip.label],
                 'unmatched_events':unmatched,'windows':len(windows),'models':{}}
         for name in ['previous_retrained','repaired']:
@@ -81,7 +82,7 @@ def main():
     result['s_pose_test']={'attempted_clips':len(clips),'windows':len(ys),
         'clips_with_windows':sum(r['windows']>0 for r in streams),'groups':len(set(r['group'] for r in streams)),
         'models':{k:evaluate(m,x,y) for k,m in models.items()}}
-    # Aggregate frame-weighted event recall and smoke false predictions in labeled non-smoke events.
+    # 프레임 수에 따른 사건 재현율과 비흡연 주석 구간에서의 흡연 오탐을 집계한다.
     streaming={}
     for name in ['previous_retrained','repaired']:
         per={}

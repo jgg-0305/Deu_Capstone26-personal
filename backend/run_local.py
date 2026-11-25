@@ -1,4 +1,6 @@
-"""Start the web API and the analysis worker together on the local PC."""
+"""로컬 관제 서버와 워커를 함께 실행한다. 웹 빌드와 DB 준비를 확인하고 API 준비 응답을 받은 뒤 분석 워커와 선택적 카카오 발송 워커를
+시작한다. 종료한 워커는 지연 후 재시작한다.
+"""
 
 import argparse
 import os
@@ -20,7 +22,7 @@ def main():
     if not (ROOT / "frontend/dist/index.html").is_file():
         parser.error("Build the frontend with npm --prefix frontend run build.")
     migrate()
-    register_models(allow_retrained_behavior=True)
+    register_models()
     env = os.environ.copy()
     env.setdefault("CCTV_WORKER_TOKEN", secrets.token_urlsafe(32))
     if len(env["CCTV_WORKER_TOKEN"]) < 32:

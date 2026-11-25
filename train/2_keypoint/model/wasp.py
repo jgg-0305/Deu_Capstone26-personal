@@ -1,3 +1,4 @@
+# 여러 팽창 비율로 이미지 특징을 읽는 공간 특징 모듈이다. 서로 다른 범위에서 얻은 문맥을 결합해 디코더의 관절 예측에 전달한다.
 """WASP (Waterfall Atrous Spatial Pooling) — source/UniPose/lib/models/modules/wasp.py 정리판."""
 import torch
 import torch.nn as nn

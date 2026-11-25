@@ -1,3 +1,5 @@
+# UniPose의 이미지 특징을 추출하는 ResNet 부분이다. 사전학습 가중치를 받아 초기화할 수 있고, 이후 관절 예측에 쓸 다단계 특징을
+# 전달한다.
 """ResNet backbone — source/2. 키포인트 객체 인식/UniPose/lib/models/modules/resnet.py 정리판.
 
 변경점:

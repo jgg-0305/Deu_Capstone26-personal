@@ -1,3 +1,7 @@
+/*
+ * 원본 재생과 인공지능 분석 결과의 표시를 연결한다. 실시간 소스는 최신 스냅샷을 읽고, 파일은 원본 재생 시각에 맞는 결과를 골라 사람
+ * 상자, ID, 관절과 행동을 겹쳐 표시한다.
+ */
 import React, { useEffect, useRef, useState } from "react";
 import { frameAt } from "./analysis-timeline.js";
 import { mediumPoseSettings, settingsPreset } from "./analysis-settings.js";
@@ -7,7 +11,7 @@ export const labels = ["정상", "넘어짐", "파손", "방화", "흡연", "유
 export const initialDisplay = { box: true, id: true, points: true, label: true };
 export const modelNames = {
   human_pose: "YOLO11n · 경량", human_pose_s: "YOLO11s · 균형", human_pose_m: "YOLO11m · 정밀",
-  behavior: "KeypointLSTM v2 · 관절과 움직임",
+  behavior: "KeypointLSTM v2 + HandFusion · 관절·손 영상",
   behavior_kpt_v1: "KeypointLSTM v1 · 관절",
   behavior_rgb: "ResNet50 + LSTM · 장면 전체",
 };

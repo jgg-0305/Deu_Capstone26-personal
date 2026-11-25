@@ -1,3 +1,4 @@
+# 관절 시퀀스 학습용 데이터셋이다. NPZ에 저장한 관절과 라벨을 읽고 학습 반복에서 텐서로 제공한다.
 """키포인트 시퀀스 데이터셋 (extract_kpts_video.py 출력 .npz 로드)."""
 
 import numpy as np

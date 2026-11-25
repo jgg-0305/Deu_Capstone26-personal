@@ -1,3 +1,4 @@
+# UniPose의 특징 추출기, 다중 크기 공간 특징 모듈과 디코더를 연결한다. 각 모듈의 출력을 이어 이미지의 관절 위치 히트맵을 만든다.
 """UniPose 키포인트 모델 — source/UniPose/lib/models/unipose.py 정리판.
 
 변경점:

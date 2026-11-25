@@ -1,3 +1,7 @@
+/*
+ * 새 소스의 기본 설정과 기존 실행에서 복원할 설정을 결정한다. 은퇴한 모델은 선택을 복원할 때 걸러내고, 프리셋을 적용할 때 선택한 행동
+ * 가중치를 보존한다.
+ */
 export const initialSettings = {
   behavior_model: "behavior", pose_model: "human_pose", resolution: 480, detection_interval: 1,
   detection_confidence: 0.4, threshold: 0.9, event_threshold: 0.9, max_age: 30,

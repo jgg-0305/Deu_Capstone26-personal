@@ -1,4 +1,6 @@
-"""Index the downloaded AI-Hub 71550 archives and read CVAT event markers."""
+"""AI-Hub 71550 압축 자료의 영상과 CVAT 사건 주석을 연결한다. 같은 촬영의 카메라 영상이 분할에 섞이지 않도록 촬영 그룹 정보를
+구성한다.
+"""
 
 from collections import Counter
 from dataclasses import dataclass
@@ -82,7 +84,7 @@ def index_archives(root):
 
 
 def split_clips(clips, examined):
-    # Group by class/scenario, store and day. Ignore time and camera suffixes.
+    # 클래스, 시나리오, 매장과 날짜로 묶는다. 시간과 카메라 접미사는 구분에 쓰지 않는다.
     examined = {group_of(PurePosixPath(name).stem) for name in examined}
     official_test = {clip.group for clip in clips if clip.source_split == "Validation"}
     validation = set()
@@ -145,7 +147,7 @@ def event_markers(root, label):
     if not starts or len(starts) != len(ends):
         raise ValueError("Missing or unpaired start/end markers")
     events = sorted(zip(sorted(starts), sorted(ends)))
-    # When events overlap the end boxes lack actor IDs, so temporal ordering is insufficient.
+    # 사건이 겹치면 종료 상자에 인물 ID가 없으므로 시간 순서만으로 연결할 수 없다.
     if any(start[0] > end[0] for start, end in events) or any(
         left[1][0] >= right[0][0] for left, right in zip(events, events[1:])
     ):

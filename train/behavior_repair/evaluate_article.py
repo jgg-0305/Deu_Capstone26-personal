@@ -1,4 +1,5 @@
-"""Measure merchandise localization, trajectory evidence and downstream action errors."""
+"""손 주변 상품 검출과 추적 근거를 평가한다. 상품 주석에 대한 위치 검출 지표와 행동 분류에 결합한 결과를 별도로 정리한다.
+"""
 import argparse
 from collections import Counter, defaultdict
 import json
@@ -153,7 +154,7 @@ def main():
     by_name={c.name:c for c in clips if c.source_split=='Validation'}
     manifest=json.loads((args.hand_run/'manifest.json').read_text('utf-8'))
     test=[r for r in manifest if r['split'] in ('test','diagnostic') and 'error' not in r]
-    # Reproduce the exact prior holdout, while separately retaining the known regression.
+    # 기존 평가 분할을 재현하고 이미 확인한 회귀 영상은 별도로 유지한다.
     test.sort(key=lambda row: (row['split'] != 'diagnostic',row['label']!=6,row['label']))
     folder=args.pose_cache if args.pose_cache is not None else args.out/'test_pose'
     folder.mkdir(parents=True,exist_ok=True)

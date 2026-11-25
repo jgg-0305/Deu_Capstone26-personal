@@ -1,3 +1,5 @@
+# 스키마 이전과 모델 등록, 계정 설정, 저장소 정리를 위한 관리 명령이다. 마이그레이션은 DB 잠금으로 직렬화한다.
+# schema_migrations는 파일명을 기본 키로 사용하고, 적용된 SQL의 SHA-256과 적용 시각을 보존한다.
 """데이터베이스 이전과 사용자 계정 관리를 위한 명령줄 도구."""
 
 import argparse
@@ -50,23 +52,43 @@ def migrate():
             db.execute("INSERT INTO schema_migrations VALUES (%s, %s)", (path.name, digest))
 
 
-def register_models(*, allow_retrained_behavior=False):
-    manifest = json.loads((ROOT / "docs/design/model-manifest.json").read_text())
+def register_models():
+    manifest = json.loads((ROOT / "docs/design/model-manifest.json").read_text(encoding="utf-8"))
     roles = {"human_pose": "pose", "human_pose_s": "pose", "human_pose_m": "pose", "store_objects": "object", "behavior": "behavior",
              "behavior_kpt_v1": "behavior", "behavior_rgb": "behavior"}
     with connect() as db:
         for artifact in manifest["models"]:
             path = ROOT / artifact["path"]
             if artifact.get("optional") and not path.is_file():
-                print(f"로컬 체크포인트 없음: {artifact['path']}")
                 continue
             with path.open("rb") as model_file:
                 digest = hashlib.file_digest(model_file, "sha256").hexdigest()
             if digest != artifact["sha256"] or path.stat().st_size != artifact["bytes"]:
-                if allow_retrained_behavior and artifact["id"] == "behavior":
-                    print(f"기본 행동 모델 해시가 다릅니다: {artifact['path']}. 재학습 모델을 웹에서 첨부해 선택하세요.")
-                    continue
                 raise RuntimeError(f"Model differs from manifest: {artifact['path']}")
+            preprocessing = Jsonb({"architecture": artifact["architecture"],
+                                   "input_shape": artifact.get("input_shape"),
+                                   "keypoint_shape": artifact.get("keypoint_shape"),
+                                   "status": ("bundled_default" if artifact["id"] == "behavior"
+                                              else "baseline_under_review")})
+            if artifact["id"] == "behavior":
+                # 같은 경로에 배포했던 이전 가중치의 실행 이력은 그대로 둔다.
+                # 현재 번들의 저장 키는 해시로 구분하고 워커는 매니페스트 경로에서 읽는다.
+                db.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (digest,))
+                row = db.execute("""
+                    INSERT INTO model_artifacts
+                        (role, name, version, sha256, storage_key, size_bytes, labels, preprocessing)
+                    VALUES ('behavior', 'behavior', %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (sha256) DO UPDATE SET name = EXCLUDED.name, version = EXCLUDED.version,
+                        storage_key = EXCLUDED.storage_key, size_bytes = EXCLUDED.size_bytes,
+                        labels = EXCLUDED.labels, preprocessing = EXCLUDED.preprocessing
+                    WHERE model_artifacts.role = EXCLUDED.role
+                    RETURNING id
+                """, (artifact["version"], digest, f"bundled/{digest}/{path.name}",
+                      artifact["bytes"], Jsonb(artifact["classes"]), preprocessing)).fetchone()
+                if row is None:
+                    raise RuntimeError(f"행동 모델 역할 불일치: {artifact['path']}")
+                print(f"기본 행동 모델 등록: {artifact['path']} ({digest[:12]})")
+                continue
             row = db.execute("""
                 INSERT INTO model_artifacts
                     (role, name, version, sha256, storage_key, size_bytes, labels, preprocessing)
@@ -75,10 +97,7 @@ def register_models(*, allow_retrained_behavior=False):
                 RETURNING id
             """, (roles[artifact["id"]], artifact["id"], artifact.get("version", manifest["upstream"]["commit"]),
                   digest, artifact["path"], artifact["bytes"], Jsonb(artifact["classes"]),
-                  Jsonb({"architecture": artifact["architecture"],
-                         "input_shape": artifact.get("input_shape"),
-                         "keypoint_shape": artifact.get("keypoint_shape"),
-                         "status": "baseline_under_review"}))).fetchone()
+                  preprocessing)).fetchone()
             print(roles[artifact["id"]], row["id"])
 
 

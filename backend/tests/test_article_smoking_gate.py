@@ -1,4 +1,6 @@
-"""Regression for stale behavior windows becoming new events after article evidence."""
+"""상품 은닉과 흡연 신호가 경쟁할 때 화면과 사건이 어떻게 바뀌는지 검증한다. 기존 흡연 점수가 뒤늦게 다시 표시되지 않게 하는 조건을
+확인한다.
+"""
 import unittest
 
 import numpy as np

@@ -1,4 +1,5 @@
-"""Compare the existing and new web checkpoints on the same held-out sequences."""
+"""기존 행동 모델과 개선 가중치를 동일한 평가 시퀀스에서 비교한다. 추론 설정을 고정하고 예측 점수와 사건 구간의 차이를 집계한다.
+"""
 
 import argparse
 from collections import Counter
@@ -78,7 +79,7 @@ def main():
             name: scores(y, pred) for name, pred in predictions.items()
         }}
         if split == "diagnostic":
-            # Summarize only the windows ending inside each annotated theft event.
+            # 절도 주석 구간 안에서 끝나는 추론 창만 집계한다.
             report[split]["theft_event_windows_by_clip"] = {
                 clip: {name: dict(Counter(LABELS[i] for i in prediction[(clips == clip) & (y == 6)]))
                        for name, prediction in predictions.items()}

@@ -1,3 +1,7 @@
+"""DeepSORT를 사용해 프레임 사이에서 같은 인물의 ID를 유지한다. 검출 상자와 관절을 같이 전달하며, 잠시 가려진 트랙은 유지하되 실제
+관측과 구분한다.
+"""
+
 from deep_sort_realtime.deepsort_tracker import DeepSort
 import numpy as np
 import torch

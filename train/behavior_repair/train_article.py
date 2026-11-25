@@ -1,4 +1,6 @@
-"""Train a wrist-ROI merchandise detector from AI-Hub object_article boxes."""
+"""손목 주변의 상품 탐지 모델을 학습한다. 상품 주석 상자를 손 주변의 좌표로 바꾸고, 다른 행동의 손 입력도 포함한 YOLO 학습 자료를
+만든다.
+"""
 import argparse
 from collections import defaultdict
 from hashlib import sha256
@@ -117,7 +119,7 @@ def prepare(clip, split, output, scratch, size):
                         continue
                     labels.append(f'0 {((l+r)/2-x1)/(x2-x1):.6f} {((t+bot)/2-y1)/(y2-y1):.6f} '
                                   f'{(r-l)/(x2-x1):.6f} {(bot-t)/(y2-y1):.6f}')
-                # In theft clips, other merchandise in view may be unlabeled.
+                # 절도 영상에 보이는 다른 상품에는 주석이 없을 수 있다.
                 if not labels and clip.label==6:
                     continue
                 stem=f'{clip.name}_{i}_{j}'

@@ -1,3 +1,6 @@
+"""상품이 가방으로 옮겨지는 판정과 사건 근거를 검증한다. 손목 누락, 가방 위치, 상품의 실제 가려짐을 서로 다른 입력으로 비교한다.
+"""
+
 import unittest
 from datetime import datetime, timezone
 from unittest.mock import Mock, patch

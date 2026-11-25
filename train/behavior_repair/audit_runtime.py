@@ -1,7 +1,5 @@
-"""Compare original GUI and web inference using identical video detections.
-
-The upstream directory must be a reviewed checkout of the original project.
-This does not run its GUI, change deployed models, or use predicted labels as truth.
+"""같은 영상 검출과 가중치에서 원본 GUI와 웹의 관절 분류를 비교한다. 검토한 원본 소스의 순수 함수와 버퍼를 가져와 시간 처리와 모델
+순전파의 차이를 진단한다.
 """
 import argparse
 import ast
@@ -35,7 +33,7 @@ def load_module(path, name):
 
 
 def load_matching(path):
-    # Import only these reviewed pure functions, not Qt / notification handlers.
+    # Qt와 알림 코드를 실행하지 않고 검토한 순수 함수만 가져온다.
     tree = ast.parse(path.read_text('utf-8'))
     selected = [node for node in tree.body if isinstance(node, ast.FunctionDef)
                 and node.name in {'_iou', '_match_keypoints'}]
@@ -96,7 +94,7 @@ def main():
     buffers = {f'{pipeline}_{name}': cls(str(path)) for pipeline, cls in
                [('original', original_behavior.TrackBehaviorBuffer), ('web', TrackBehaviorBuffer)]
                for name, path in paths.items()}
-    # Control: same weights, same actual web features, original buffer algorithm.
+    # 같은 가중치와 웹 입력 특징을 쓰고 버퍼 처리만 원래 방식을 적용한 비교 조건이다.
     buffers['original_buffer_web_input_new'] = original_behavior.TrackBehaviorBuffer(str(args.new_model))
     gui_rule, web_rule = original_rule.TheftMonitor(), TheftMonitor()
     capture = cv2.VideoCapture(str(args.video))
@@ -133,7 +131,7 @@ def main():
                 predictions[name] = plain_predictions(prediction)
                 raw_top[name] = {str(t): [{'label': label_en(int(i)).lower(), 'score': float(p[i])}
                                         for i in np.argsort(-p)[:3]] for t, p in buffer._probs.items()}
-            # Forward parity isolates model/label implementation from tracking and history.
+            # 순전파 결과를 대조해 모델과 라벨 처리 차이를 추적과 상태 이력에서 분리한다.
             new_buffer = buffers['web_new']
             for track in web_tracks:
                 tid = track['track_id']
@@ -145,7 +143,7 @@ def main():
                     a = torch.softmax(new_buffer.model(sequence), 1)
                     b = torch.softmax(buffers['original_new'].model(sequence), 1)
                     probability_error.append(float((a-b).abs().max()))
-            # Original GUI uses wall time. Replay on the source clock to model real-time playback.
+            # 원본 GUI의 실시간 재생을 재현하기 위해 현재 시각 대신 소스 시각을 사용한다.
             original_rule.time = SimpleNamespace(time=lambda: seconds)
             gui_suspects = gui_rule.update(gui_tracks, gui_points, found_objects)
             web_suspects = web_rule.update([t for t in web_tracks if t['observed']], web_points,

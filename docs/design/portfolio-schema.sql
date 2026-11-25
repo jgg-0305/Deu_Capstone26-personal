@@ -1,4 +1,5 @@
 -- PostgreSQL 설계 초안이며 운영 환경은 마이그레이션으로 관리한다.
+-- 현재 운영 테이블의 관계, 제약과 인덱스 설명은 backend/migrations/012_schema_comments.sql에 있다.
 
 BEGIN;
 

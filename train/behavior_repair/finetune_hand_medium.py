@@ -1,4 +1,5 @@
-"""Fine-tune the existing hand-fusion classifier for YOLO11m and mixed pose inputs."""
+"""YOLO11m과 혼합 포즈 입력을 사용하는 손 융합 분류기를 미세조정한다. 포즈 시퀀스와 손 영역을 결합한 자료로 재학습한다.
+"""
 import argparse
 from collections import Counter, defaultdict
 import json

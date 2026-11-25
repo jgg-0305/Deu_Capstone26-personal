@@ -1,6 +1,4 @@
-"""Reproducible full-clip pose and streaming behavior regression.
-
-Uses existing project modules; does not change deployed weights or labels.
+"""영상 전체에서 포즈와 행동의 시계열 회귀 결과를 재현한다. 실행 조건과 가중치로 캐시를 구분하고 사건 구간의 모델·추적 지표를 집계한다.
 """
 import argparse
 from collections import Counter
@@ -42,7 +40,7 @@ def get_groups():
 
 
 def cached_extract(clip, detector, tracker_factory, pose_name):
-    # Include code, weights and settings in cache identity.
+    # 코드, 가중치와 설정을 캐시 식별값에 포함한다.
     code = b''.join((STAGING / f).read_bytes() for f in (
         'core/tracker.py', 'core/detector.py', 'core/kpt_behavior_classifier.py',
         'train/behavior_repair/prepare_aihub.py'))
@@ -74,7 +72,7 @@ def cached_extract(clip, detector, tracker_factory, pose_name):
 def replay(tracks, count, checkpoint):
     buffer = TrackBehaviorBuffer(str(checkpoint))
     rows = []
-    # Invert _encode with a unit bbox; preserves the exact cached 34 features.
+    # 단위 경계 상자로 좌표 변환을 역으로 적용해 저장된 34개 특징을 유지한다.
     for frame in range(count):
         observed, points = [], {}
         for tid, positions in tracks.items():

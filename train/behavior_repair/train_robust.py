@@ -1,6 +1,5 @@
-"""Train a compatible eight-class KeypointLSTM on mixed n/s pose sequences.
-
-Selection uses validation only. Test and diagnostic clips never enter training.
+"""포즈 입력이 섞인 8개 클래스 관절 행동 모델을 학습한다. 관절 증강과 클래스 가중치를 적용하고 검증 결과로 체크포인트를 고른다. 시험과
+진단 영상은 학습에 포함하지 않는다.
 """
 import argparse
 import hashlib
@@ -30,12 +29,12 @@ def augment(x):
     mirrored[..., 0] = 1-mirrored[..., 0]
     x[flip] = mirrored[flip]
     valid[flip] = valid[flip][:, :, pairs]
-    # Same bbox perturbation for the full sequence, preserving motion.
+    # 시퀀스 전체에 같은 경계 상자 변형을 적용해 동작의 연속성을 유지한다.
     scale = 1 + torch.randn(b,1,1,2,device=x.device).clamp(-2,2)*.035
     shift = torch.randn(b,1,1,2,device=x.device).clamp(-2,2)*.02
     x = (x-.5)*scale + .5 + shift
     x += torch.randn_like(x)*.006
-    # Occluded joints remain exactly zero. Do not hallucinate missing faces/hands.
+    # 가려진 관절은 0으로 유지해 보이지 않는 얼굴이나 손 위치를 추가하지 않는다.
     joints = torch.rand(b,1,17,1,device=x.device) >= .04
     frames = torch.ones(b,30,1,1,device=x.device,dtype=torch.bool)
     drop = torch.rand(b,device=x.device) < .25
@@ -73,7 +72,7 @@ def evaluate(model,x,y):
 
 
 def selection(metric):
-    # Equal weight for all eight classes, including normal. No favored anomaly.
+    # 모델 선택에는 정상을 포함한 8개 클래스에 같은 가중치를 적용한다.
     return metric['macro_f1']
 
 
@@ -196,8 +195,8 @@ def main():
          'pose_models':['yolo11n-pose.pt','yolo11s-pose.pt'],'resolution':480,'detection_confidence':.4})
     print('Training completed',checkpoint,flush=True)
     if sys.platform == 'win32':
-        # Avoid the observed Windows CUDA allocator fault during local-tensor
-        # destruction. Only exit here after all artifacts have been written.
+        # Windows에서 지역 CUDA 텐서를 정리할 때 관측된 메모리 할당기 오류를 피한다.
+        # 학습 산출물 저장을 마친 경우에만 이 위치에서 종료한다.
         import ctypes
         torch.cuda.synchronize()
         sys.stdout.flush()

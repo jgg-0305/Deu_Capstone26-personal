@@ -1,4 +1,6 @@
-"""Aligned wrist imagery and reach/return motion for person-level classification."""
+"""인물의 손 주변 영상과 손의 이동을 행동 분류 입력으로 변환한다. 관절과 인물 상자를 기준으로 손 영역과 동작 특징을 맞추어 포즈 특징과
+결합한다.
+"""
 import cv2
 import numpy as np
 import torch

@@ -1,3 +1,7 @@
+"""YOLO 모델을 호출해 인물의 상자·관절 또는 가판대·결제기 상자를 얻는다. 처리 해상도와 검출 신뢰도를 입력으로 받고, 이후 추적과 규칙이
+읽을 수 있는 형식으로 결과를 정리한다.
+"""
+
 from ultralytics import YOLO
 from ultralytics.utils import DEFAULT_CFG_DICT
 import numpy as np

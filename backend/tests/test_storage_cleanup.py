@@ -1,3 +1,5 @@
+# 분리된 PostgreSQL 테스트 스키마와 임시 디렉터리에서 권한, 파일 삭제, 공유 원본과 재시도를 확인한다. 사건 저장과 알림 대기열 및
+# 이미지 관련 API도 함께 검사한다.
 """독립 PostgreSQL 스키마와 임시 파일로 삭제 권한·공유 영상·실패 복구를 검증한다."""
 
 from contextlib import contextmanager

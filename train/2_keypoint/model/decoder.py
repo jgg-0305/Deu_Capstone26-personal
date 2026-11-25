@@ -1,3 +1,4 @@
+# UniPose의 특징을 관절별 공간 히트맵으로 복원한다. 심층 특징과 앞쪽 공간 특징을 맞춰 위치 예측에 사용한다.
 """UniPose Decoder — source/UniPose/lib/models/modules/decoder.py 정리판."""
 import torch
 import torch.nn as nn

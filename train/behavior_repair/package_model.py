@@ -1,4 +1,5 @@
-"""Package the selected weights with a checked input contract for the web worker."""
+"""선택된 가중치를 웹에서 읽을 수 있는 배포 형태로 포장한다. 학습 산출물과 클래스·입력 규격을 확인하고 가중치 해시를 기록한다.
+"""
 import hashlib
 import json
 from pathlib import Path

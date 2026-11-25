@@ -105,10 +105,12 @@
       "id": "behavior",
       "path": "train/1_behavior/output/kpt_behavior.pth",
       "role": "per_track_keypoint_sequence_behavior_classification",
-      "bytes": 2466044,
-      "git_blob": "45cc03ce078147f6e29f9e65da374d31e61bf464",
-      "sha256": "f9412d9d09ffe6be0132bb310725e18aa49fa06bbb79e475b5d08a76e991c41a",
-      "architecture": "KeypointLSTMv2: position_and_velocity + two_layer_BiLSTM + attention_pooling",
+      "bytes": 5103881,
+      "git_blob": "ee587639ce22cd9ea35693415cb2af26a81faeac",
+      "sha256": "55c3c9e13bd255b2ad84f57b4fdbfb424f58b0fe2def4133eaf879fd24e1d26c",
+      "version": "hand-fusion-55c3c9e13bd2",
+      "architecture": "KeypointLSTM v2 + hand RGB and motion",
+      "sample_fps": 3.0,
       "classes": {
         "0": "normal",
         "1": "fall",
@@ -122,20 +124,19 @@
       "input_shape": [
         "batch",
         30,
-        34
+        1586
       ],
       "output_shape": [
         "batch",
         8
       ],
-      "state_dict_key_count": 24,
+      "state_dict_key_count": 36,
       "verified_scope": [
-        "git_blob_equal_in_worktree_main_upstream",
+        "git_blob_for_bundled_checkpoint",
         "sha256",
         "weights_only_true_state_dict_load",
         "strict_load_with_repository_runtime_model",
-        "finite_output_for_zero_tensor_1x30x34",
-        "demo_2_real_video_inference"
+        "finite_output_for_zero_tensor_1x30x1586"
       ],
       "not_verified": [
         "independent_behavior_accuracy",

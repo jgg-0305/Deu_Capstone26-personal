@@ -1,4 +1,5 @@
-"""Run the eight-class AI-Hub extraction, retraining, and held-out evaluation pipeline."""
+"""AI-Hub 자료 준비, 행동 재학습, 평가와 가중치 포장을 순서대로 실행한다. 단계별 산출물을 확인하고 완료된 준비 작업을 재사용한다.
+"""
 import argparse
 import json
 import os

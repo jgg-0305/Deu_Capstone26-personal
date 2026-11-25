@@ -1,3 +1,5 @@
+# 관제 화면과 분석 워커의 요청을 처리하는 FastAPI 진입점이다. 관제 사용자는 세션과 소유권으로 확인하고 워커는 내부 토큰과 실행 임대로
+# 확인한다. 영상 등록은 대기열에 작업을 만들며, 사건 저장과 알림 예약은 같은 PostgreSQL 트랜잭션에서 처리한다.
 """인증이 필요한 웹 API와 분석 워커용 내부 API."""
 
 import hashlib
@@ -21,13 +23,17 @@ from psycopg.types.json import Jsonb
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
 
 from backend.analysis_media import FRAME_LIMIT, frame_path, read_snapshot, replace_frame
-from backend.behavior_upload import MAX_MODEL_BYTES, MODEL_DIR, UPLOAD_PREFIX, bundled_rgb_artifact
+from backend.behavior_upload import (
+    MAX_MODEL_BYTES, MODEL_DIR, UPLOAD_PREFIX, bundled_behavior_artifact, bundled_rgb_artifact,
+    normalize_behavior_model,
+)
 from backend.db import DatabaseConfigurationError, connect
 from backend import kakao_notify
 from backend.kakao_images import IMAGE_BASE64_LIMIT, decode_jpeg, valid_signature
 from backend.live import BOUNDARY, frames, public_rtsp_url, resolve_camera
 from backend.passwords import hasher, test_admin_enabled, verify_password
-from backend.pose_upload import pose_artifacts, register_pose_upload
+from backend.auxiliary_models import BAG_MODEL_PATH, article_model_path
+from backend.pose_upload import pose_artifacts, register_pose_upload, uploaded_pose_path
 from backend.samples import MAX_VIDEO_BYTES, ROOT, UPLOAD_DIR, asset_path, source_path
 from backend.storage import cleanup_camera, inventory, prepare_purge
 
@@ -201,9 +207,18 @@ class AnalysisInput(Input):
         return value
 
 
-def analysis_defaults():
+def analysis_defaults(db):
     pose = os.getenv("CCTV_DEFAULT_POSE_MODEL")
-    behavior = os.getenv("CCTV_DEFAULT_BEHAVIOR_MODEL")
+    behavior = normalize_behavior_model(os.getenv("CCTV_DEFAULT_BEHAVIOR_MODEL"))
+    if not pose and behavior != "behavior_rgb" and "human_pose_m" not in retired_models():
+        if BAG_MODEL_PATH.is_file() and article_model_path() is not None:
+            medium = db.execute("""
+                SELECT sha256, storage_key FROM model_artifacts
+                WHERE role = 'pose' AND name = 'human_pose_m'
+            """).fetchone()
+            if medium and ((ROOT / medium["storage_key"]).is_file()
+                           or uploaded_pose_path(medium).is_file()):
+                pose = "human_pose_m"
     overrides = {}
     if pose:
         overrides["pose_model"] = pose
@@ -538,17 +553,21 @@ def logout(user: User, db: Db):
 
 
 def enqueue(db, camera_id, settings):
-    default = analysis_defaults()
-    settings = AnalysisInput(**(default.model_dump() | settings.model_dump(exclude_unset=True)))
+    default = analysis_defaults(db)
+    values = default.model_dump() | settings.model_dump(exclude_unset=True)
+    values["behavior_model"] = normalize_behavior_model(values["behavior_model"])
+    settings = AnalysisInput(**values)
     if {settings.pose_model, settings.behavior_model}.intersection(retired_models()):
         raise HTTPException(409, "운영에서 제외된 모델입니다. 기본 모델을 선택하세요.")
     if db.execute("""
         SELECT 1 FROM model_artifacts a JOIN cameras c ON c.id = %s
         WHERE a.role = 'behavior' AND a.name = %s
+          AND (a.name <> 'behavior' OR a.sha256 = %s)
           AND (a.name IN ('behavior', 'behavior_kpt_v1', 'behavior_rgb') OR a.name = %s OR EXISTS (
               SELECT 1 FROM behavior_uploads u WHERE u.artifact_id = a.id AND u.owner_id = c.owner_id
           ))
-    """, (camera_id, settings.behavior_model, default.behavior_model)).fetchone() is None:
+    """, (camera_id, settings.behavior_model, bundled_behavior_artifact()["sha256"],
+          default.behavior_model)).fetchone() is None:
         raise HTTPException(409, "선택한 행동 모델을 사용할 수 없습니다. 파일을 첨부하거나 기본 모델을 선택하세요.")
     if db.execute("SELECT 1 FROM model_artifacts WHERE role = 'pose' AND name = %s",
                   (settings.pose_model,)).fetchone() is None:
@@ -888,7 +907,10 @@ def queue_analysis(camera_id: UUID, data: AnalysisInput, user: Owner, db: Db):
 
 @app.get("/api/v1/models")
 def models(user: User, db: Db):
-    default = analysis_defaults()
+    default = analysis_defaults(db)
+    default_models = [default.behavior_model]
+    if os.getenv("CCTV_DEFAULT_POSE_MODEL") or default.pose_model == "human_pose_m":
+        default_models.append(default.pose_model)
     return db.execute("""
         SELECT a.id, a.role, a.name, a.version, a.sha256, a.labels, a.preprocessing,
                COALESCE(u.filename, CASE WHEN a.name = %s THEN
@@ -899,11 +921,11 @@ def models(user: User, db: Db):
         FROM model_artifacts a
         LEFT JOIN behavior_uploads u ON u.artifact_id = a.id AND u.owner_id = %s
         WHERE (left(a.name, 7) <> 'upload_' OR u.owner_id IS NOT NULL OR a.name = %s)
+          AND (a.name <> 'behavior' OR a.sha256 = %s)
           AND a.name <> ALL(%s)
         ORDER BY a.role, a.created_at DESC
-    """, (default.behavior_model,
-          [value for value in (os.getenv("CCTV_DEFAULT_BEHAVIOR_MODEL"), os.getenv("CCTV_DEFAULT_POSE_MODEL")) if value],
-          user["id"], default.behavior_model, retired_models())).fetchall()
+    """, (default.behavior_model, default_models,
+          user["id"], default.behavior_model, bundled_behavior_artifact()["sha256"], retired_models())).fetchall()
 
 
 def register_behavior_upload(db, owner_id, filename, temp, size, digest, architecture):

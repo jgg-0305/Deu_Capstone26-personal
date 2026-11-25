@@ -1,4 +1,6 @@
-"""Extract inference-compatible training sequences directly from AI-Hub 71550 ZIPs."""
+"""AI-Hub 원본과 주석으로 학습용 관절 시퀀스를 만든다. 촬영 그룹을 분리하고 사건의 인물과 추적 대상이 맞는 구간을 선택하며 추출 캐시를
+재사용한다.
+"""
 
 import argparse
 from collections import Counter
@@ -115,7 +117,7 @@ def extract(video, detector, expected, tracker_factory, encode):
 
     tracks = defaultdict(dict)
     tracker = tracker_factory()
-    # VideoCapture on Windows can fail with a Unicode absolute path. Use an ASCII basename.
+    # Windows의 영상 캡처는 한글 절대 경로에서 실패할 수 있어 파일명에 ASCII 문자를 사용한다.
     cwd = Path.cwd()
     os.chdir(video.parent)
     try:

@@ -170,7 +170,7 @@ python -m backend.manage set-login --user-id UUID --username myuser
 
 | 모델 | 체크포인트 | 결과 범위 |
 | --- | --- | --- |
-| KeypointLSTM v2 (기본) | `train/1_behavior/output/kpt_behavior.pth` | 사람별 17관절의 위치와 변화량 |
+| KeypointLSTM v2 + HandFusion (기본) | `train/1_behavior/output/kpt_behavior.pth` | 사람별로 관절, 손 주변 영상과 움직임을 결합 |
 | KeypointLSTM v1 | `kpt_behavior.pth` | 사람별 17관절 위치 |
 | ResNet50 + LSTM | `model_final.pth` | BGR 3프레임 기반의 장면 전체 분류 |
 

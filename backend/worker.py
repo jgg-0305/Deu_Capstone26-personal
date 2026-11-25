@@ -1,3 +1,5 @@
+# 영상 분석 작업을 가져오는 백엔드 워커다. 파일과 실시간 작업 슬롯을 분리하고 가중치 해시를 확인한다. 소스 시각에 따라 인물 추적, 행동
+# 추론과 상품 규칙을 실행하며 진행 상태와 사건을 내부 API로 보낸다.
 """저장소의 모델로 등록된 파일과 실시간 영상 소스를 분석한다."""
 
 import argparse
@@ -24,7 +26,8 @@ import requests
 import torch
 
 from backend.analysis_media import frame_path
-from backend.behavior_upload import MODEL_DIR, UPLOAD_PREFIX
+from backend.behavior_upload import MODEL_DIR, UPLOAD_PREFIX, normalize_behavior_model
+from backend.auxiliary_models import BAG_MODEL_PATH, article_model_path
 from backend.kakao_images import IMAGE_LIMIT
 from backend.live import open_capture
 from backend.pose_upload import uploaded_pose_path
@@ -46,7 +49,7 @@ STOP = Event()
 
 
 class EventEpisodes:
-    """Keep a theft event open across a short rule-to-model handoff."""
+    """규칙 판정에서 모델 판정으로 짧게 전환되어도 같은 도난 사건을 유지한다."""
 
     def __init__(self):
         self.previous = set()
@@ -139,14 +142,10 @@ def model_digest(path, size, mtime_ns):
 
 
 def local_article_model():
-    # 운영자가 설치하는 보조 가중치는 OS에 상관없이 같은 위치에서 찾는다.
-    configured = os.getenv("CCTV_ARTICLE_MODEL", "").strip()
-    path = ROOT / configured if configured else MODEL_DIR / "article.pt"
-    if path.is_file():
-        return path
-    if configured:
+    path = article_model_path()
+    if path is None and os.getenv("CCTV_ARTICLE_MODEL", "").strip():
         raise ModelError("CCTV_ARTICLE_MODEL이 가리키는 상품 추적 가중치 파일이 없습니다.")
-    return None
+    return path
 
 
 def checkpoint_digest(path):
@@ -234,7 +233,7 @@ def capture_frames(capture):
             pts = index * 1000 / fps
         if first_pts is None:
             first_pts = pts
-        # A file can stand in for a camera: deliver frames on its media clock.
+        # 파일을 카메라 입력처럼 재생할 때 원본 영상 시간에 맞춰 프레임을 보낸다.
         if STOP.wait(max(0, started + (pts - first_pts) / 1000 - time.monotonic())):
             return
         yield frame, pts
@@ -242,7 +241,7 @@ def capture_frames(capture):
 
 
 class RtspMediaClock:
-    """Use media time for inference without using it to age the live queue."""
+    """추론에 영상 시각을 사용하고 실시간 대기열의 경과 시간은 별도로 계산한다."""
 
     def __init__(self, fps):
         self.period = 1000 / fps if math.isfinite(fps) and 0 < fps <= 240 else None
@@ -405,7 +404,7 @@ def publish_snapshot(api, path, lease, run_id, frame, tracks, keypoints, predict
 
 
 class LiveSnapshotPublisher:
-    """Send only the newest pending preview without blocking RTSP inference."""
+    """RTSP 추론을 막지 않도록 대기 중인 미리보기 중 최신 결과만 전송한다."""
 
     def __init__(self, api):
         self.api = WorkerClient(api.url, api.token)
@@ -449,11 +448,11 @@ def analyze(api, camera_id, threshold, job=None):
         "resolution": 480, "detection_interval": 1, "detection_confidence": 0.4,
         "max_age": 30, "event_threshold": 0.9, **(job.get("settings", {}) if job else {}),
     }
-    behavior_model = settings.pop("behavior_model", "behavior")
+    behavior_model = normalize_behavior_model(settings.pop("behavior_model", "behavior"))
     pose_model = settings.pop("pose_model", "human_pose")
     paths, ids = verified_models(api, behavior_model, pose_model)
     article_path = local_article_model() if behavior_model != "behavior_rgb" else None
-    bag_path = MODEL_DIR / "yolo11s-bag.pt"
+    bag_path = BAG_MODEL_PATH
     use_bag = article_path is not None and pose_model == "human_pose_m" and bag_path.is_file()
     auxiliary_models = {"article": checkpoint_digest(article_path),
                         "bag": checkpoint_digest(bag_path) if use_bag else None}

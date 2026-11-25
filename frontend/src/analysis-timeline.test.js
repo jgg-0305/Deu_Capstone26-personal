@@ -1,3 +1,6 @@
+/*
+ * 재생 시각과 관절 표시의 대응을 검증한다. 미래·오래된 프레임 배제와 저프레임 영상에서 결과가 유지되는 시간을 검사한다.
+ */
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { frameAt } from './analysis-timeline.js';

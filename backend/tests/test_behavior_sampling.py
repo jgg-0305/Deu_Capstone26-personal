@@ -1,4 +1,6 @@
-"""Behavior time windows follow checkpoint FPS, rather than source video FPS."""
+"""행동 버퍼가 원본 시각에 맞춰 관절을 모으는지 확인한다. FPS 차이, 긴 시각 간격과 되감기, 기존 프레임 기반 모델, 라벨 순서를
+다룬다.
+"""
 import tempfile
 from pathlib import Path
 import unittest

@@ -1,4 +1,6 @@
-"""Associate a visible article with a carried bag across brief wrist occlusion."""
+"""손에 있던 상품이 가방 쪽으로 이동하다 가려지는 상황을 판정한다. 사람·가방·상품의 위치와 시간상 움직임을 연결하며, 손목 관측이 잠시
+끊겨도 일관된 상품 궤적을 확인한다.
+"""
 
 from dataclasses import dataclass
 from math import hypot
@@ -114,8 +116,8 @@ class BagTransferTracker:
                     pos = center(box)
                     step = distance(pos, last) / scale
                     visual = cv2.compareHist(item.appearance, appearance, cv2.HISTCMP_BHATTACHARYYA)
-                    # A weak detection may continue a visually consistent article.
-                    # Its path remains available when the seeding wrist is hidden.
+                    # 외관이 일치하면 신뢰도가 낮은 상품 검출로도 기존 궤적을 이어갈 수 있다.
+                    # 처음 연결한 손목이 가려져도 이어 온 상품의 이동 경로를 유지한다.
                     wrist = points[item.wrist]
                     if (score < .28 or step > .17 * gap or visual > .52
                             or (wrist[2] >= .55 and distance(pos, wrist) > .20 * scale)):
@@ -182,8 +184,8 @@ class BagTransferTracker:
                                      and slot - item.slot == 1)
                 if (tid not in matches and 1 <= slot - item.slot <= max_gap - 1
                         and (confirmed_bag or bag_just_detected)):
-                    # A one-frame detector miss is insufficient if the item
-                    # still looks the same at its last visible position.
+                    # 한 프레임에서 검출에 실패했더라도 마지막 관측 위치에서
+                    # 상품의 외관이 그대로 보이면 가려진 것으로 판단하지 않는다.
                     remaining = article_appearance(frame, item.box)
                     self.checked_until[tid] = now + 2.
                     appearance_change = (None if remaining is None else

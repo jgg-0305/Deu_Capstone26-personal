@@ -1,4 +1,5 @@
-"""Local, read-only live monitor for the eight-class training/evaluation run."""
+"""행동 모델 학습·평가 진행 상태를 로컬 창에 표시한다. 작업이 남긴 상태 파일을 주기적으로 읽어 단계와 진행량을 갱신한다.
+"""
 import json
 import os
 from pathlib import Path

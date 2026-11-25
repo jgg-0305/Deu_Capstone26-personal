@@ -1,4 +1,5 @@
-"""Render an annotated before/after clip from saved predictions, without rerunning inference."""
+"""저장된 추론 결과에 영상 시각을 맞춰 전후 비교 클립을 만든다. 예측 기록을 영상에 덧그려 어떤 구간에서 결과가 바뀌는지 표시한다.
+"""
 import json
 import shutil
 import tempfile
@@ -23,7 +24,7 @@ def main():
         cwd=Path.cwd()
         os.chdir(temp)
         cap=cv2.VideoCapture('clip.mp4')
-        # OpenCV's Windows path handling is more reliable with an ASCII basename.
+        # Windows에서 OpenCV가 영상 파일을 안정적으로 열도록 이름에 ASCII 문자를 사용한다.
         writer=cv2.VideoWriter('comparison.mp4',cv2.VideoWriter_fourcc(*'mp4v'),3,(1280,410))
         if not cap.isOpened() or not writer.isOpened():
             raise RuntimeError('Could not open comparison media')

@@ -1,4 +1,5 @@
-"""Whole-event denominators must retain uncertainty and unavailable predictions."""
+"""전체 사건을 평가할 때 미확정 또는 관측 불가 구간을 정답으로 세지 않는지 검사한다. 준비한 예측 시퀀스의 집계 결과를 검증한다.
+"""
 import unittest
 import numpy as np
 from diagnose import summarize

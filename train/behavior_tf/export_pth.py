@@ -1,3 +1,5 @@
+# TensorFlow 가중치의 행렬 순서와 형태를 PyTorch 모델에 맞게 변환한다. 같은 입력의 출력을 비교한 후 웹 첨부용 상태 사전을
+# 저장한다.
 """TensorFlow에서 학습한 가중치를 웹 첨부용 PyTorch 상태 사전으로 변환한다."""
 
 import argparse

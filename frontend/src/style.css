@@ -1,3 +1,6 @@
+/*
+ * 관제 화면의 색상, 소스 타일과 기록 화면의 배치를 정의한다. 공통 색상과 간격을 재사용하며 화면 크기에 따라 패널과 메뉴 배치를 조정한다.
+ */
 :root {
   color-scheme: dark;
   font-family: Geist, Inter, "Apple SD Gothic Neo", "Malgun Gothic", system-ui, sans-serif;

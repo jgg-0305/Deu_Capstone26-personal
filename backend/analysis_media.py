@@ -1,3 +1,5 @@
+# 웹캠 입력과 분석 미리보기의 최신 프레임을 교환한다. 임시 파일에 기록한 뒤 목적지로 교체해 다른 프로세스가 불완전한 프레임을 읽지 않게
+# 한다. 스냅샷은 현재 분석 실행의 결과인지 확인해서 반환한다.
 """웹캠 입력과 분석 미리보기의 최신 프레임을 로컬에서 교환한다."""
 
 import json
@@ -22,8 +24,8 @@ def replace_frame(camera_id, kind, data):
         try:
             output.write(data)
             output.close()
-            # Windows can deny replacement while a reader briefly has the
-            # previous snapshot open, including a reader in the worker process.
+            # Windows에서는 이전 스냅샷이 열려 있으면 파일 교체가 잠시 거부될 수 있다.
+            # 같은 워커 안에서 읽는 경우도 있어 교체를 재시도한다.
             for delay in (.01, .02, .04, .08, .16):
                 try:
                     os.replace(temp, path)
