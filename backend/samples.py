@@ -19,6 +19,7 @@ def sample_path(name: str) -> Path:
 # 업로드 영상은 저장소 밖으로 노출되지 않는 경로에 서버가 부여한 이름으로 보관한다.
 UPLOAD_DIR = ROOT / ".local-videos"
 MAX_VIDEO_BYTES = 256 * 1024 * 1024
+MAX_CLIP_BYTES = 12 * 1024 * 1024
 
 
 def source_path(key: str) -> Path:

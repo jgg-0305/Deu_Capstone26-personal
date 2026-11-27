@@ -11,6 +11,8 @@ YOLO11 + DeepSORT + KeypointLSTM 기반 실시간 **이상행동 감지** 시스
 - [프로젝트 구조](#프로젝트-구조)
 - [설치와 실행](#설치와-실행)
 - [영상 등록과 사건 확인](#영상-등록과-사건-확인)
+- [카메라 여러 대 등록과 추가](#카메라-여러-대-등록과-추가)
+- [웹에서 새 카메라 직접 추가](#웹에서-새-카메라-직접-추가)
 - [모델 선택과 비교](#모델-선택과-비교)
 - [카카오톡 알림](#카카오톡-알림)
 - [데이터베이스와 pgAdmin](#데이터베이스와-pgadmin)
@@ -305,11 +307,13 @@ export CCTV_WORKER_TOKEN
 
 **사건 기록**에서 감지 시점으로 이동하고 판정 방식을 확인하거나 검토 결과를 추가할 수 있습니다. 타일의 **×**는 소스를 관제 화면에서 빼고 분석을 중단합니다. 사건만 지우려면 **이 사건 삭제**, 업로드 원본과 분석 결과까지 정리하려면 **저장 공간 → 영상·기록 삭제**를 사용합니다.
 
+RTSP·웹캠의 새 사건은 감지 전 최대 10초와 감지 후 최대 5초를 H.264 MP4로 저장합니다. 클립은 **사건 기록**에서 처음부터 재생합니다. 감지 직후라면 잠시 후 사건 기록을 새로고침합니다. 라이브 클립을 만드는 워커에는 `libx264`를 지원하는 `ffmpeg`가 PATH에 있어야 합니다. macOS와 Windows 모두 `ffmpeg -encoders`에서 확인할 수 있습니다. 사건을 삭제하면 해당 클립도 정리합니다.
+
 [AI-Hub 매장 이상행동 데이터](https://aihub.or.kr/aihubdata/data/view.do?dataSetSn=71550)로 검증할 때는 `Validation`의 원천 영상을 사용합니다. Windows에서는 압축을 푼 개별 MP4를 선택합니다. macOS에서는 준비된 `combined_video_data`의 개별 MP4를 사용합니다. 원본이 분할 ZIP이면 조각을 숫자 순서대로 합쳐 압축을 푼 뒤 업로드합니다.
 
 ### RTSP 허용 주소 설정
 
-서버를 시작할 터미널에서 웹 로그인 계정과 카메라 주소를 허용합니다. 카메라 인증이 필요하면 계정과 비밀번호가 포함된 주소는 서버 환경에만 설정합니다. 관제 화면에는 인증 정보를 뺀 주소를 입력합니다.
+서버를 시작할 터미널에서 웹 로그인 계정과 카메라 주소를 허용합니다. 카메라 인증이 필요하면 계정과 비밀번호가 포함된 주소는 서버 환경에만 설정합니다. 해당 IP에 승인된 스트림이 하나면 관제 화면에는 IP만 입력해도 됩니다. 여러 스트림을 등록한 IP는 인증 정보를 뺀 전체 RTSP 주소로 선택합니다.
 
 ```powershell
 # Windows PowerShell
@@ -324,6 +328,82 @@ export CCTV_RTSP_URLS='["rtsp://192.168.1.50:554/live"]'
 ```
 
 설정 후 통합 실행기를 재시작합니다. 서버가 카메라 네트워크에 연결되어 있어야 합니다. RTSP 연결은 서버에서 처리하므로 관제 탭을 닫아도 분석이 계속됩니다. 브라우저 웹캠은 해당 탭에서 프레임을 전송합니다.
+
+### 카메라 여러 대 등록과 추가
+
+1. **카메라 정보를 준비합니다.** 설치 위치와 표시 이름, 카메라의 고정 IP 또는 DHCP 예약 주소, RTSP 포트와 스트림 경로를 확인합니다. 서버에서 각 카메라의 영상이 열리는지 먼저 확인합니다. 벤더별로 경로가 다르므로 실제 카메라에서 확인한 경로를 사용합니다.
+2. **서버 허용 목록을 설정합니다.** `CCTV_RTSP_URLS`는 카메라 주소를 하나씩 넣는 JSON 배열입니다. 처음에 여러 대를 설치한다면 각 카메라의 주소를 같은 배열에 넣습니다. `CCTV_RTSP_USERS`에는 카메라를 등록할 **관제 웹 로그인 아이디**를 쉼표로 구분해 지정합니다. 카메라 전용 계정은 필요한 경우 각 RTSP 주소에 넣고, 예약 문자가 포함된 아이디·비밀번호는 URL 인코딩합니다. 실제 인증 정보는 서버의 로컬 설정에 보관합니다.
+3. **웹 관제에서 카메라를 등록합니다.** 서버를 재시작하고 허용된 관제 계정으로 로그인합니다. **영상 관제 → 영상 소스 추가 → IP 카메라 (RTSP)**에서 카메라의 IP와 표시 이름을 입력하고 **CCTV 연결**을 누릅니다. 등록할 카메라마다 반복합니다. 같은 IP로 스트림이 여러 개 승인돼 있으면 인증 정보를 제외한 전체 RTSP 주소로 원하는 스트림을 지정합니다.
+
+아래는 두 대를 등록하는 예시입니다. 첫 번째 카메라는 이미 설정한 주소의 위치를 보여 주며, 두 번째는 추가 카메라입니다. 실제 운영 환경의 계정, IP와 제조사별 경로로 바꿉니다.
+
+```powershell
+# Windows PowerShell
+$env:CCTV_RTSP_USERS = 'myuser'
+$env:CCTV_RTSP_URLS = '["rtsp://CAM01_USER:CAM01_PASSWORD@172.30.1.61:554/stream1","rtsp://CAM02_USER:CAM02_PASSWORD@172.30.1.62:554/stream1"]'
+& .\.venv-web\Scripts\python.exe -m backend.run_local --port 8000
+```
+
+```bash
+# macOS 기존 소켓 DB를 쓰는 경우 .local-db/web.env에서 아래 두 값을 설정
+export CCTV_RTSP_USERS='myuser'
+export CCTV_RTSP_URLS='["rtsp://CAM01_USER:CAM01_PASSWORD@172.30.1.61:554/stream1","rtsp://CAM02_USER:CAM02_PASSWORD@172.30.1.62:554/stream1"]'
+```
+
+macOS는 설정 파일을 저장한 뒤 평소대로 `bash backend/run_local_mac.sh --port 8000`을 실행합니다. Windows와 macOS 모두 **추가로 들여온 카메라만** 기존 JSON 배열에 이어서 넣고, 기존 카메라 주소도 배열에 유지합니다. 재시작 후 관제 화면에서 새 카메라만 등록하면 됩니다. 이미 등록된 카메라의 표시 이름과 기존 사건은 PostgreSQL에 저장됩니다.
+
+기존 허용 목록으로 20대를 등록하는 경우 20개 주소를 같은 배열에 넣고 관제 화면에서 각각 등록합니다. 카메라별 서버 설정을 줄이고 싶다면 아래의 **새 카메라 직접 추가**를 사용합니다. 통합 실행의 워커는 RTSP와 웹캠을 합쳐 기본 3개를 동시에 분석하므로, 나머지 소스는 분석 대기열에 표시될 수 있습니다.
+
+### 웹에서 새 카메라 직접 추가
+
+기관 관리자가 서버에서 **운영자와 카메라 네트워크를 한 번 설정**하면 이후 카메라를 추가할 때마다 환경 파일을 수정하거나 서버를 재시작할 필요가 없습니다. 운영자가 설치 위치별로 카메라를 한 대씩 등록합니다.
+
+1. 서버에서 `CCTV_RTSP_USERS`에 등록을 허용할 관제 계정을, `CCTV_RTSP_NETWORKS`에 카메라 전용 사설 CIDR을 넣습니다. 여러 계정이나 CIDR은 쉼표로 구분합니다. 기본 RTSP 포트는 `554`이며 다른 포트가 필요한 경우 서버의 `CCTV_RTSP_PORTS`에서 허용할 포트만 지정합니다.
+2. 카메라 계정이 필요한 경우 `CCTV_RTSP_CREDENTIAL_KEY`를 서버의 비밀 설정에 보관합니다. 키는 처음 한 번 생성하고 재시작이나 백업 복원 시에도 같은 키를 사용합니다. 아래의 `172.30.1.0/24`와 `myuser`는 예시입니다.
+3. 의존성을 설치하고 통합 실행을 시작합니다. 통합 실행기가 암호화된 카메라 계정을 저장하는 DB 마이그레이션을 적용합니다.
+4. **영상 관제 → 영상 소스 추가 → IP 카메라 (RTSP) → 새 카메라 직접 추가**를 선택합니다. **IP, RTSP 포트, 제조사별 스트림 경로, 표시 이름**을 입력합니다. 인증이 필요한 카메라는 카메라 전용 아이디와 비밀번호를 입력한 뒤 **CCTV 연결**을 누릅니다.
+5. 타일에서 **원본**과 **AI 분석**을 확인하고 카메라마다 반복합니다. 카메라 비밀번호는 서버 키로 암호화되어 PostgreSQL에 저장됩니다. 기관에서 브라우저를 통해 접근할 때는 관제 주소에 HTTPS를 적용합니다.
+
+**Windows PowerShell**
+
+```powershell
+$Py = ".\.venv-web\Scripts\python.exe"
+& $Py -m pip install -r backend/requirements.txt
+$KeyDir = Join-Path $env:LOCALAPPDATA 'DeuCapstone26'
+New-Item -ItemType Directory -Force -Path $KeyDir | Out-Null
+$KeyFile = Join-Path $KeyDir 'rtsp-credential.key'
+if (-not (Test-Path $KeyFile)) {
+    & $Py -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())" |
+        Set-Content -Encoding ASCII $KeyFile
+}
+$env:CCTV_RTSP_CREDENTIAL_KEY = (Get-Content -Raw $KeyFile).Trim()
+$env:CCTV_RTSP_USERS = 'myuser'
+$env:CCTV_RTSP_NETWORKS = '172.30.1.0/24'
+$env:CCTV_RTSP_PORTS = '554'
+npm.cmd --prefix frontend run build
+& $Py -m backend.run_local --port 8000
+```
+
+**macOS Terminal · 기존 로컬 DB**
+
+```bash
+.venv-web/bin/python -m pip install -r backend/requirements.txt
+mkdir -p .local-db
+if [ ! -e .local-db/rtsp-credential.key ]; then
+  (umask 077; .venv-web/bin/python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())' > .local-db/rtsp-credential.key)
+fi
+```
+
+기존 `.local-db/web.env`에 아래 값을 추가하거나 같은 이름의 설정을 수정합니다. 카메라가 미리 등록된 `CCTV_RTSP_URLS` 값도 계속 사용할 수 있습니다.
+
+```bash
+export CCTV_RTSP_CREDENTIAL_KEY="$(cat .local-db/rtsp-credential.key)"
+export CCTV_RTSP_USERS='myuser'
+export CCTV_RTSP_NETWORKS='172.30.1.0/24'
+export CCTV_RTSP_PORTS='554'
+```
+
+저장 후 평소대로 `bash backend/run_local_mac.sh --port 8000`으로 실행합니다. TCP DB를 쓰는 Mac은 같은 환경 값을 실행 터미널에 적용한 뒤 `python -m backend.run_local --port 8000`으로 시작합니다.
 
 ## 모델 선택과 비교
 

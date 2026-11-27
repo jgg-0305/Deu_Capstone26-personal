@@ -28,6 +28,7 @@ import torch
 from backend.analysis_media import frame_path
 from backend.behavior_upload import MODEL_DIR, UPLOAD_PREFIX, normalize_behavior_model
 from backend.auxiliary_models import BAG_MODEL_PATH, article_model_path
+from backend.event_clips import LiveEventClips
 from backend.kakao_images import IMAGE_LIMIT
 from backend.live import open_capture
 from backend.pose_upload import uploaded_pose_path
@@ -133,6 +134,16 @@ class WorkerClient:
         if not response.ok or response.is_redirect:
             raise WorkerError(path, response.status_code)
         return response.json() if response.content else None
+
+    def upload_clip(self, path, lease, clip, duration):
+        response = requests.post(
+            self.url + "/internal/v1" + path, data=clip,
+            headers={"Authorization": f"Bearer {self.token}", "X-CCTV-Lease": lease,
+                     "Content-Type": "video/mp4"},
+            params={"duration_ms": duration}, timeout=(5, 15), allow_redirects=False,
+        )
+        if not response.ok or response.is_redirect:
+            raise WorkerError(path, response.status_code)
 
 
 @lru_cache(maxsize=16)
@@ -469,6 +480,7 @@ def analyze(api, camera_id, threshold, job=None):
     count = 0
     frame_count = 0
     publisher = None
+    recorder = None
     error_code = "model_load_failed"
     try:
         api.request("POST", path + "/snapshot", {**lease, "snapshot": {
@@ -491,6 +503,9 @@ def analyze(api, camera_id, threshold, job=None):
         article_tracker = ArticleTracker(strict_concealment=pose_model == "human_pose_m")
         if rtsp_source and isinstance(api, WorkerClient):
             publisher = LiveSnapshotPublisher(api)
+        if not file_source and isinstance(api, WorkerClient):
+            recorder = LiveEventClips(lambda event_id, clip, duration: api.upload_clip(
+                f"{path}/events/{event_id}/clip", lease["lease_token"], clip, duration))
         extended_article_tracking = rtsp_source or pose_model == "human_pose_m"
         pocket_tracker = ArticleTracker(pocket_recovery=True, continuous_carry=extended_article_tracking,
                                         strict_concealment=pose_model == "human_pose_m", recover_compressed=rtsp_source)
@@ -566,6 +581,8 @@ def analyze(api, camera_id, threshold, job=None):
                     last_heartbeat = now
                 if frame is None:
                     if pts is not None:
+                        if recorder:
+                            recorder.reset()
                         tracker = HumanTracker(max_age=settings["max_age"], embedder=tracker.tracker.embedder)
                         if behavior:
                             behavior.reset()
@@ -595,6 +612,8 @@ def analyze(api, camera_id, threshold, job=None):
                     else:
                         api.request("POST", path + "/snapshot", reconnect)
                     continue
+                if recorder:
+                    recorder.push(frame, round(pts))
                 if frame_count % settings["detection_interval"] == 0:
                     detections = pose.detect(frame)
                     pose_count += 1
@@ -675,15 +694,20 @@ def analyze(api, camera_id, threshold, job=None):
                 new_events = episodes.started(candidates, pts, bag_episodes)
                 jpeg = encode_event_image(frame) if new_events else None
                 photo = {"image_jpeg": jpeg} if jpeg is not None else {}
+                event_ids = []
                 for tid, kind, method in new_events:
                     details = candidates[(tid, kind, method)]
-                    api.request("POST", path + "/events", {
+                    stored = api.request("POST", path + "/events", {
                         **lease, **details, **photo, "event_type": kind, "detection_method": method,
                         "track_id": str(tid) if tid is not None else None, "producer_event_key": f"{frame_count}:{tid}:{kind}:{method}",
                         "detected_at": datetime.now(timezone.utc).isoformat(),
                         "source_time_ms": round(pts), "source_frame_index": frame_count,
                     })
+                    if recorder:
+                        event_ids.append(stored["id"])
                     count += 1
+                if recorder:
+                    recorder.start(round(pts), event_ids)
                 frame_count += 1
                 publish_due = (frame_count - 1) % settings["detection_interval"] == 0 if file_source else now - last_snapshot >= 0.10
                 if publish_due:
@@ -722,6 +746,8 @@ def analyze(api, camera_id, threshold, job=None):
     finally:
         if publisher:
             publisher.close()
+        if recorder:
+            recorder.close()
         try:
             api.request("POST", path + "/finish", {
                 **lease, "status": status, "error_code": error_code if status == "failed" else None,

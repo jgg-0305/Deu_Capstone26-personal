@@ -173,6 +173,7 @@ function SourceTile({ source, selected, onSelect, onVideoError, remove, style, h
 function Monitor({ sources, models, selection, select, api, canWrite, refresh, refreshModels, notify, onError }) {
   const [layout, setLayout] = useState("grid");
   const [sourceMode, setSourceMode] = useState("rtsp");
+  const [rtspMode, setRtspMode] = useState("registered");
   const [settings, setSettings] = useState(initialSettings);
   const [attachedBehavior, setAttachedBehavior] = useState(null);
   const defaultChosen = useRef(false);
@@ -311,16 +312,30 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
   async function add(event) {
     event.preventDefault();
     const form = event.currentTarget;
-    const { name, sample, video, url, device } = Object.fromEntries(new FormData(form));
+    const { name, sample, video, url, device, ip, port, path, camera_username, camera_password } =
+      Object.fromEntries(new FormData(form));
     setPending(true);
     try {
       if (sourceMode === "webcam") {
         await addWebcam(device);
       } else {
-        const source = sourceMode === "upload"
-          ? await api("/cameras/upload?" + new URLSearchParams({ name, filename: video.name, ...newSourceSettings }), video)
-          : sourceMode === "rtsp" ? await api("/cameras/rtsp", { name, url: url.trim(), settings: newSourceSettings })
-          : await api("/cameras", { name, sample, settings: newSourceSettings });
+        let source;
+        if (sourceMode === "rtsp" && rtspMode === "direct") {
+          if (camera_password && !window.isSecureContext) {
+            throw new Error("카메라 계정 입력에는 로컬 접속 또는 HTTPS가 필요합니다.");
+          }
+          source = await api("/cameras/rtsp/direct", {
+            name, ip: ip.trim(), port: Number(port), path: path.trim(),
+            camera_username: camera_username.trim() || null, camera_password: camera_password || null,
+            settings: newSourceSettings,
+          });
+        } else if (sourceMode === "rtsp") {
+          source = await api("/cameras/rtsp", { name, url: url.trim(), settings: newSourceSettings });
+        } else if (sourceMode === "upload") {
+          source = await api("/cameras/upload?" + new URLSearchParams({ name, filename: video.name, ...newSourceSettings }), video);
+        } else {
+          source = await api("/cameras", { name, sample, settings: newSourceSettings });
+        }
         form.reset();
         await refresh();
         select(source.id);
@@ -399,10 +414,31 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
               <select id="sample" name="sample"><option value="demo-1.mp4">샘플 영상 1</option><option value="demo-2.mp4">샘플 영상 2</option></select>
             </>}
             {sourceMode === "rtsp" && <>
-              <label htmlFor="rtsp-url">서버에서 허용한 RTSP 주소</label>
-              <input id="rtsp-url" name="url" type="text" required maxLength={2048} autoComplete="off"
-                spellCheck={false} placeholder="rtsp://192.168.1.50:554/live" />
-              <p className="muted">카메라 아이디와 비밀번호는 서버에 설정합니다.</p>
+              <div className="switch" aria-label="IP 카메라 등록 방식">
+                <button type="button" aria-pressed={rtspMode === "registered"} disabled={pending}
+                  onClick={() => setRtspMode("registered")}>등록된 주소</button>
+                <button type="button" aria-pressed={rtspMode === "direct"} disabled={pending}
+                  onClick={() => setRtspMode("direct")}>새 카메라 직접 추가</button>
+              </div>
+              {rtspMode === "registered" ? <>
+                <label htmlFor="rtsp-url">카메라 IP 또는 RTSP 주소</label>
+                <input id="rtsp-url" name="url" type="text" required maxLength={2048} autoComplete="off"
+                  spellCheck={false} placeholder="예: 192.168.1.50" />
+                <p className="muted">서버에서 승인한 스트림이 하나면 IP만 입력합니다.</p>
+              </> : <>
+                <label htmlFor="camera-ip">카메라 IP</label>
+                <input id="camera-ip" name="ip" maxLength={45} required autoComplete="off"
+                  spellCheck={false} placeholder="예: 172.30.1.61" />
+                <label htmlFor="camera-port">RTSP 포트</label>
+                <input id="camera-port" name="port" type="number" min={1} max={65535} defaultValue={554} required />
+                <label htmlFor="camera-path">스트림 경로</label>
+                <input id="camera-path" name="path" maxLength={512} defaultValue="/stream1" required />
+                <label htmlFor="camera-username">카메라 계정 아이디</label>
+                <input id="camera-username" name="camera_username" maxLength={128} autoComplete="off" />
+                <label htmlFor="camera-password">카메라 계정 비밀번호</label>
+                <input id="camera-password" name="camera_password" type="password" maxLength={256} autoComplete="new-password" />
+                <p className="muted">허용된 카메라 네트워크에서 추가할 수 있습니다. 인증을 쓰지 않는 카메라는 두 계정 칸을 비워 둡니다.</p>
+              </>}
             </>}
             {sourceMode === "webcam" ? <>
               <label htmlFor="webcam-device">이 기기의 카메라</label>
@@ -506,7 +542,9 @@ function Records({ sources, api, revision, canWrite, onError, notify, refresh, o
 
   return <div className="workspace records">
     <section className="panel timeline" aria-label="감지된 사건">
-      <div className="section-heading"><h2>감지된 사건</h2></div>
+      <div className="section-heading"><h2>감지된 사건</h2>
+        <button disabled={loading} onClick={() => load()}>새로고침</button>
+      </div>
       <div className="filters">
         <label>영상 소스<select value={camera} onChange={(e) => { setCamera(e.target.value); setSelected(null); }}>
           <option value="">전체 소스</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
@@ -540,8 +578,10 @@ function Records({ sources, api, revision, canWrite, onError, notify, refresh, o
             article_disappeared_near_hip: "손과 함께 이동한 물체가 골반 주변에서 가려짐",
             article_disappeared_inside_bag: "손에서 가방 안쪽까지 이동한 상품이 가방에서 가려짐" })[event.evidence.reason]}
         </p>
-        {event.media_id ? <Video key={seek} mediaId={event.media_id} time={event.source_time_ms}
-          onError={() => notify("영상을 열 수 없습니다. 접속 상태를 확인하세요.")} /> : <p className="empty">연결된 영상이 없습니다.</p>}
+        {event.media_id ? <Video key={seek} mediaId={event.media_id}
+          time={event.media_kind === "clip" ? 0 : event.source_time_ms}
+          onError={() => notify("영상을 열 수 없습니다. 접속 상태를 확인하세요.")} /> :
+          <p className="empty">연결된 영상이 없습니다. 방금 감지된 사건은 잠시 후 새로고침하세요.</p>}
         <p className="muted">검토 상태 · {reviews[event.decision] || "미검토"}</p>
         {canWrite && <form className="review-form" onSubmit={review}>
           <label htmlFor="decision">검토 결과</label>

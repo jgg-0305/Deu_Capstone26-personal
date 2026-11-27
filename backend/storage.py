@@ -32,6 +32,13 @@ def source_filename(camera):
     return filename
 
 
+def clip_filenames(db, camera_id):
+    return {row['storage_key'].rsplit('/', 1)[-1] for row in db.execute("""
+        SELECT m.storage_key FROM media_assets m JOIN inference_runs r ON r.id = m.run_id
+        WHERE r.camera_id = %s AND m.kind = 'clip' AND m.status <> 'deleted'
+    """, (camera_id,))}
+
+
 def file_names(camera, run_ids):
     names = {f"{camera['id']}.analysis.json", f"{camera['id']}.webcam.jpg"}
     names.update(f'{run_id}.timeline.jsonl' for run_id in run_ids)
@@ -64,13 +71,14 @@ def inventory(db, owner_id):
     all_files = set()
     rows = []
     for camera in cameras:
-        names = file_names(camera, camera['run_ids'])
+        clips = clip_filenames(db, camera['id'])
+        names = file_names(camera, camera['run_ids']) | clips
         all_files.update(names)
         original = source_filename(camera)
         rows.append({key: camera[key] for key in (
             'id', 'name', 'original_filename', 'source_type', 'created_at', 'event_count', 'pending_files')})
         rows[-1].update(size_bytes=sum(file_size(name) for name in names),
-                        video_bytes=file_size(original) if original else 0,
+                        video_bytes=sum(file_size(name) for name in clips) + (file_size(original) if original else 0),
                         removed=camera['deleted_at'] is not None,
                         cleanup_pending=camera['purge_requested_at'] is not None)
     return {'sources': rows, 'total_bytes': sum(file_size(name) for name in all_files)}
@@ -79,7 +87,7 @@ def inventory(db, owner_id):
 def prepare_purge(db, camera):
     """카메라 잠금·분석 중단 후 삭제 의도를 기록한다. 여기서는 파일을 지우지 않는다."""
     run_ids = [row['id'] for row in db.execute('SELECT id FROM inference_runs WHERE camera_id = %s', (camera['id'],))]
-    names = file_names(camera, run_ids)
+    names = file_names(camera, run_ids) | clip_filenames(db, camera['id'])
     original = source_filename(camera)
     shared = False
     if original:

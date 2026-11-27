@@ -16,13 +16,17 @@ from uuid import uuid4
 
 import psycopg
 import numpy as np
+from cryptography.fernet import Fernet
+from httpx import URL
 from psycopg import sql
 from psycopg.rows import dict_row
 from fastapi.testclient import TestClient
 
 from backend.api import app, database
+from backend.behavior_upload import bundled_behavior_artifact
 from backend.kakao_notify import deliver_next
 from backend.kakao_images import signed_url
+from backend.rtsp_registration import resolve_source
 from backend.worker import encode_event_image
 from backend.storage import managed_path, prepare_purge
 
@@ -108,6 +112,89 @@ class StorageCleanupTests(unittest.TestCase):
                                     headers={'Authorization': 'Bearer worker-token-for-storage-tests-only'})
         self.assertEqual(response.status_code, 201, response.text)
         return response.json()['id'], body
+
+    def test_live_clip_is_linked_playable_and_removed_with_its_event(self):
+        source = self.source()
+        with self.db() as db:
+            db.execute("""
+                UPDATE cameras SET source_type = 'rtsp', source_storage_key = NULL,
+                    source_uri = 'rtsp://127.0.0.1:8554/sample' WHERE id = %s
+            """, (source["camera"],))
+        event_id, _ = self.event(source)
+        path = f"/internal/v1/runs/{source['run']}/events/{event_id}/clip?duration_ms=3000"
+        headers = {"Authorization": "Bearer worker-token-for-storage-tests-only",
+                   "X-CCTV-Lease": source["lease"], "Content-Type": "video/mp4"}
+        video = b"\x00\x00\x00\x18ftypmp42" + b"video" * 20
+        for _ in range(2):
+            response = self.client.post(path, content=video, headers=headers)
+            self.assertEqual(response.status_code, 204, response.text)
+        event = self.client.get("/api/v1/events").json()[0]
+        self.assertEqual(event["media_kind"], "clip")
+        media_url = f"/api/v1/media/{event['media_id']}"
+        response = self.client.get(media_url, headers={"Range": "bytes=0-11"})
+        self.assertEqual(response.status_code, 206, response.text)
+        self.assertEqual(response.content, video[:12])
+        _, other = self.user("owner")
+        self.client.cookies.set("cctv_session", other)
+        self.assertEqual(self.client.get(media_url).status_code, 404)
+        self.client.cookies.set("cctv_session", self.token)
+        self.assertEqual(self.client.delete(f"/api/v1/events/{event_id}").status_code, 204)
+        self.assertEqual(self.client.get(media_url).status_code, 404)
+        self.assertFalse((self.folder / f"{event_id}.mp4").exists())
+        self.assertEqual(self.client.post(path, content=video, headers=headers).status_code, 404)
+
+    def test_direct_rtsp_registration_encrypts_credentials_and_respects_network_limits(self):
+        models = {}
+        with self.db() as db:
+            db.execute("UPDATE users SET username='operator', password_hash='test' WHERE id=%s",
+                       (self.owner,))
+            for role, name, digest in (("pose", "human_pose", "a" * 64), ("object", "store_objects", "b" * 64),
+                                       ("behavior", "behavior", bundled_behavior_artifact()["sha256"])):
+                model = db.execute("""
+                    INSERT INTO model_artifacts(role,name,version,sha256,storage_key,size_bytes,labels,preprocessing)
+                    VALUES (%s,%s,'test',%s,%s,1,'{}','{}')
+                    RETURNING id
+                """, (role, name, digest, name)).fetchone()
+                models[role] = str(model["id"])
+        values = {"CCTV_RTSP_USERS": "operator", "CCTV_RTSP_NETWORKS": "172.30.1.0/24",
+                  "CCTV_RTSP_CREDENTIAL_KEY": Fernet.generate_key().decode(),
+                  "CCTV_RTSP_PORTS": "554", "CCTV_DEFAULT_POSE_MODEL": "human_pose",
+                  "CCTV_DEFAULT_BEHAVIOR_MODEL": "behavior", "CCTV_RETIRED_MODELS": ""}
+        payload = {"name": "테스트 IP 카메라", "ip": "172.30.1.61",
+                   "camera_username": "camera@local", "camera_password": "only#camera"}
+        url = "/api/v1/cameras/rtsp/direct"
+        with patch.dict(os.environ, values):
+            for blocked in ({"ip": "127.0.0.1"}, {"ip": "172.30.2.61"}, {"port": 5432}):
+                self.assertEqual(self.client.post(url, json=payload | blocked).status_code, 403)
+            self.assertEqual(self.client.post(url, json=payload).status_code, 403)
+            self.client.base_url = URL("https://testserver")
+            response = self.client.post(url, json=payload)
+            self.assertEqual(response.status_code, 201, response.text)
+            camera_id = response.json()["id"]
+            self.assertEqual(response.json()["status"], "queued")
+            self.assertNotIn(payload["camera_password"], response.text)
+            with self.db() as db:
+                row = db.execute("""
+                    SELECT c.source_uri, b.camera_id AS rtsp_camera_id, b.auth_token AS rtsp_auth_token
+                    FROM cameras c JOIN rtsp_camera_registrations b ON b.camera_id=c.id WHERE c.id=%s
+                """, (camera_id,)).fetchone()
+            self.assertEqual(row["source_uri"], "rtsp://172.30.1.61:554/stream1")
+            self.assertNotIn(payload["camera_password"], row["rtsp_auth_token"])
+            self.assertEqual(resolve_source("operator", row),
+                             "rtsp://camera%40local:only%23camera@172.30.1.61:554/stream1")
+            headers = {"Authorization": "Bearer worker-token-for-storage-tests-only"}
+            job = self.client.post("/internal/v1/jobs/claim?kind=live", headers=headers).json()
+            run = self.client.post("/internal/v1/runs", headers=headers, json={
+                "camera_id": camera_id, "job_id": job["id"], "claim_token": job["claim_token"],
+                "worker_id": "test-worker", "models": models, "rule_version": "stand-pos-v1",
+            })
+            self.assertEqual(run.status_code, 201, run.text)
+            self.assertEqual(run.json()["rtsp_url"], "rtsp://camera%40local:only%23camera@172.30.1.61:554/stream1")
+            self.assertNotIn(payload["camera_password"], self.client.get("/api/v1/cameras").text)
+            self.assertEqual(self.client.delete(f"/api/v1/cameras/{camera_id}").status_code, 204)
+            with self.db() as db:
+                self.assertIsNone(db.execute("SELECT 1 FROM rtsp_camera_registrations WHERE camera_id=%s",
+                                             (camera_id,)).fetchone())
 
     def test_kakao_live_event_is_queued_once_and_sent_without_network(self):
         source = self.source()

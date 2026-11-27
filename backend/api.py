@@ -8,19 +8,20 @@ import os
 import secrets
 import subprocess
 import sys
+from tempfile import NamedTemporaryFile
 from typing import Annotated, Literal
 from urllib.parse import urlencode, urlsplit
 from uuid import UUID, uuid4
 
 import anyio
-from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection, Error, OperationalError
 from psycopg.errors import ForeignKeyViolation, UndefinedColumn, UndefinedTable, UniqueViolation
 from psycopg.types.json import Jsonb
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StringConstraints, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, StringConstraints, field_validator, model_validator
 
 from backend.analysis_media import FRAME_LIMIT, frame_path, read_snapshot, replace_frame
 from backend.behavior_upload import (
@@ -30,12 +31,13 @@ from backend.behavior_upload import (
 from backend.db import DatabaseConfigurationError, connect
 from backend import kakao_notify
 from backend.kakao_images import IMAGE_BASE64_LIMIT, decode_jpeg, valid_signature
-from backend.live import BOUNDARY, frames, public_rtsp_url, resolve_camera
+from backend.live import BOUNDARY, frames, registered_camera_url
 from backend.passwords import hasher, test_admin_enabled, verify_password
 from backend.auxiliary_models import BAG_MODEL_PATH, article_model_path
 from backend.pose_upload import pose_artifacts, register_pose_upload, uploaded_pose_path
-from backend.samples import MAX_VIDEO_BYTES, ROOT, UPLOAD_DIR, asset_path, source_path
-from backend.storage import cleanup_camera, inventory, prepare_purge
+from backend.rtsp_registration import encrypt_camera_login, prepare_camera, resolve_source
+from backend.samples import MAX_CLIP_BYTES, MAX_VIDEO_BYTES, ROOT, UPLOAD_DIR, asset_path, source_path
+from backend.storage import cleanup_camera, inventory, managed_path, prepare_purge
 
 app = FastAPI(title="CCTV API", docs_url=None, redoc_url=None, openapi_url=None)
 FRONTEND_DIST = ROOT / "frontend" / "dist"
@@ -250,6 +252,16 @@ class RtspInput(Input):
     settings: AnalysisInput = Field(default_factory=AnalysisInput)
 
 
+class DirectRtspInput(Input):
+    name: ShortText
+    ip: str = Field(min_length=1, max_length=45)
+    port: int = Field(default=554, ge=1, le=65535)
+    path: str = Field(default="/stream1", min_length=1, max_length=512, pattern=r"^/")
+    camera_username: str | None = Field(default=None, min_length=1, max_length=128)
+    camera_password: SecretStr | None = Field(default=None, min_length=1, max_length=256)
+    settings: AnalysisInput = Field(default_factory=AnalysisInput)
+
+
 class RunInput(Input):
     camera_id: UUID
     worker_id: ShortText
@@ -349,7 +361,8 @@ def live():
 @app.get("/health/ready")
 def ready(db: Db):
     if db.execute("SELECT count(*) AS count FROM schema_migrations WHERE name = ANY(%s)",
-                  (["009_worker_presence.sql", "010_kakao_oauth.sql", "011_kakao_event_images.sql"],)).fetchone()["count"] != 3:
+                  (["009_worker_presence.sql", "010_kakao_oauth.sql", "011_kakao_event_images.sql",
+                    "013_rtsp_registration.sql"],)).fetchone()["count"] != 4:
         raise HTTPException(503, "Database migration is required")
     return {"status": "ready"}
 
@@ -668,17 +681,40 @@ async def upload_camera(request: Request, user: Owner, db: Db,
 
 @app.post("/api/v1/cameras/rtsp", status_code=201)
 def create_rtsp_camera(data: RtspInput, user: Owner, db: Db):
-    url = public_rtsp_url(data.url)
-    resolve_camera(user["username"], url)
+    url = registered_camera_url(user["username"], data.url.strip())
+    return register_rtsp_camera(db, user["id"], data.name, url, data.settings)
+
+
+def register_rtsp_camera(db, user_id, name, url, settings, registration=None):
     try:
         row = db.execute("""
             INSERT INTO cameras (owner_id, name, source_type, source_uri)
             VALUES (%s, %s, 'rtsp', %s)
             RETURNING id, name, source_type, is_enabled, created_at
-        """, (user["id"], data.name, url)).fetchone()
-        return registered_source(db, row, data.settings)
+        """, (user_id, name, url)).fetchone()
+        if registration is not None:
+            login, password = registration
+            token = encrypt_camera_login(row["id"], login, password) if login else None
+            db.execute("INSERT INTO rtsp_camera_registrations(camera_id, auth_token) VALUES (%s, %s)",
+                       (row["id"], token))
+        return registered_source(db, row, settings)
     except UniqueViolation:
         raise HTTPException(409, "같은 이름으로 등록된 영상 소스가 있습니다.") from None
+
+
+@app.post("/api/v1/cameras/rtsp/direct", status_code=201)
+def create_direct_rtsp_camera(data: DirectRtspInput, request: Request, user: Owner, db: Db):
+    url = prepare_camera(user["username"], data.ip, data.port, data.path)
+    login = (data.camera_username or "").strip()
+    password = data.camera_password.get_secret_value() if data.camera_password else ""
+    if bool(login) != bool(password):
+        raise HTTPException(422, "카메라 계정 아이디와 비밀번호를 함께 입력하세요.")
+    loopback = {"127.0.0.1", "::1"}
+    local_request = (request.url.hostname in loopback | {"localhost"}
+                     and request.client is not None and request.client.host in loopback)
+    if login and request.url.scheme != "https" and not local_request:
+        raise HTTPException(403, "카메라 계정 입력에는 로컬 접속 또는 HTTPS가 필요합니다.")
+    return register_rtsp_camera(db, user["id"], data.name, url, data.settings, (login, password))
 
 
 @app.post("/api/v1/cameras/webcam", status_code=201)
@@ -738,6 +774,7 @@ def remove_camera(camera_id: UUID, user: Owner, db: Db):
     if row is None:
         raise HTTPException(404, "영상 소스를 찾을 수 없습니다.")
     stop_analysis(db, camera_id)
+    db.execute("DELETE FROM rtsp_camera_registrations WHERE camera_id = %s", (camera_id,))
     frame_path(camera_id, "webcam.jpg").unlink(missing_ok=True)
     frame_path(camera_id, "analysis.json").unlink(missing_ok=True)
     for run in db.execute("SELECT id FROM inference_runs WHERE camera_id = %s", (camera_id,)):
@@ -789,12 +826,14 @@ def timeline(camera_id: UUID, run_id: UUID, user: User, db: Db,
 def camera_live(camera_id: UUID, user: Owner, db: Db,
                 digest: Annotated[str, Depends(session_digest)]):
     row = db.execute("""
-        SELECT source_uri FROM cameras WHERE id = %s AND owner_id = %s
+        SELECT c.source_uri, b.camera_id AS rtsp_camera_id, b.auth_token AS rtsp_auth_token
+        FROM cameras c LEFT JOIN rtsp_camera_registrations b ON b.camera_id = c.id
+        WHERE c.id = %s AND c.owner_id = %s
           AND source_type = 'rtsp' AND is_enabled AND deleted_at IS NULL
     """, (camera_id, user["id"])).fetchone()
     if row is None:
         raise HTTPException(404, "IP 카메라를 찾을 수 없습니다.")
-    url = resolve_camera(user["username"], row["source_uri"])
+    url = resolve_source(user["username"], row)
 
     def authorized():
         try:
@@ -893,14 +932,16 @@ def expire_jobs(db, camera_id=None):
 @app.post("/api/v1/cameras/{camera_id}/analysis", status_code=202)
 def queue_analysis(camera_id: UUID, data: AnalysisInput, user: Owner, db: Db):
     source = db.execute("""
-        SELECT source_type, source_uri FROM cameras WHERE id = %s AND owner_id = %s
+        SELECT c.source_type, c.source_uri, b.camera_id AS rtsp_camera_id, b.auth_token AS rtsp_auth_token
+        FROM cameras c LEFT JOIN rtsp_camera_registrations b ON b.camera_id = c.id
+        WHERE c.id = %s AND c.owner_id = %s
           AND (source_type <> 'webcam' OR webcam_session_id = %s)
-          AND is_enabled AND deleted_at IS NULL FOR UPDATE
+          AND is_enabled AND deleted_at IS NULL FOR UPDATE OF c
     """, (camera_id, user["id"], user["session_id"])).fetchone()
     if source is None:
         raise HTTPException(404, "영상 소스를 찾을 수 없습니다.")
     if source["source_type"] == "rtsp":
-        resolve_camera(user["username"], source["source_uri"])
+        resolve_source(user["username"], source)
     stop_analysis(db, camera_id)
     return enqueue(db, camera_id, data)
 
@@ -1076,14 +1117,22 @@ def events(user: User, db: Db, camera_id: UUID | None = None,
                 WHERE event_id = e.id AND recipient_user_id = c.owner_id AND channel = 'kakao') AS kakao_status,
                r.config_snapshot->'behavior_threshold' AS behavior_threshold,
                r.config_snapshot->'event_threshold' AS event_threshold,
-               (SELECT id FROM media_assets WHERE run_id = r.id
-                AND kind = 'source' AND status = 'ready') AS media_id
+               media.id AS media_id, media.kind AS media_kind
         FROM detection_events e
         JOIN inference_runs r ON r.id = e.run_id JOIN cameras c ON c.id = r.camera_id
         LEFT JOIN LATERAL (
             SELECT decision FROM event_reviews WHERE event_id = e.id
             ORDER BY created_at DESC, id DESC LIMIT 1
         ) review ON true
+        LEFT JOIN LATERAL (
+            SELECT m.id, m.kind FROM media_assets m
+            WHERE m.run_id = r.id AND m.status = 'ready'
+              AND (m.expires_at IS NULL OR m.expires_at > now())
+              AND (m.kind = 'source' OR (m.kind = 'clip' AND EXISTS (
+                  SELECT 1 FROM event_media em WHERE em.event_id = e.id AND em.media_asset_id = m.id
+              )))
+            ORDER BY (m.kind = 'clip') DESC, m.created_at DESC LIMIT 1
+        ) media ON true
         WHERE c.owner_id = %s AND e.deleted_at IS NULL
           AND (%s::uuid IS NULL OR c.id = %s)
           AND (%s::text IS NULL OR e.detection_method = %s)
@@ -1112,12 +1161,25 @@ def delete_event(event_id: UUID, user: Owner, db: Db):
         UPDATE detection_events e SET deleted_at = COALESCE(e.deleted_at, now()), evidence = '{}'::jsonb
         FROM inference_runs r, cameras c
         WHERE e.id = %s AND e.run_id = r.id AND r.camera_id = c.id AND c.owner_id = %s
-        RETURNING e.id
+        RETURNING e.id, c.id AS camera_id
     ''', (event_id, user['id'])).fetchone()
     if row is None:
         raise HTTPException(404, "사건을 찾을 수 없습니다.")
     db.execute('''UPDATE notification_deliveries SET status = 'cancelled', lease_token = NULL, lease_expires_at = NULL
                   WHERE event_id = %s AND status IN ('queued', 'retry_wait', 'delivering')''', (event_id,))
+    clip = db.execute("""
+        UPDATE media_assets m SET status = 'deleting'
+        FROM event_media em
+        WHERE em.event_id = %s AND em.media_asset_id = m.id AND m.kind = 'clip' AND m.status = 'ready'
+        RETURNING m.storage_key
+    """, (event_id,)).fetchone()
+    if clip:
+        db.execute("""
+            INSERT INTO storage_deletions(camera_id, filename) VALUES (%s, %s)
+            ON CONFLICT (camera_id, filename) DO NOTHING
+        """, (row["camera_id"], clip["storage_key"].rsplit("/", 1)[-1]))
+        db.commit()
+        cleanup_camera(db, row["camera_id"])
     return Response(status_code=204)
 
 
@@ -1133,6 +1195,7 @@ def delete_storage(camera_id: UUID, user: Owner, db: Db):
     if camera is None:
         raise HTTPException(404, "영상 소스를 찾을 수 없습니다.")
     stop_analysis(db, camera_id)
+    db.execute("DELETE FROM rtsp_camera_registrations WHERE camera_id = %s", (camera_id,))
     shared = prepare_purge(db, camera)
     # 실패하더라도 재시도할 수 있도록 삭제 요청과 접근 차단을 파일 삭제보다 먼저 확정한다.
     db.commit()
@@ -1145,9 +1208,13 @@ def media(media_id: UUID, user: User, db: Db):
     row = db.execute("""
         SELECT m.storage_key FROM media_assets m
         JOIN inference_runs r ON r.id = m.run_id JOIN cameras c ON c.id = r.camera_id
-        WHERE m.id = %s AND m.kind = 'source' AND m.status = 'ready'
+        WHERE m.id = %s AND m.status = 'ready'
           AND (m.expires_at IS NULL OR m.expires_at > now())
           AND c.owner_id = %s
+          AND (m.kind = 'source' OR (m.kind = 'clip' AND EXISTS (
+              SELECT 1 FROM event_media em JOIN detection_events e ON e.id = em.event_id
+              WHERE em.media_asset_id = m.id AND e.deleted_at IS NULL
+          )))
     """, (media_id, user["id"])).fetchone()
     if row is None:
         raise HTTPException(404, "Video not found")
@@ -1207,8 +1274,10 @@ def fail_job(job_id: UUID, data: JobClaim, authorized: Worker, db: Db):
 @app.post("/internal/v1/runs", status_code=201)
 def start_run(data: RunInput, authorized: Worker, db: Db):
     source = db.execute("""
-        SELECT c.source_storage_key, c.source_type, c.source_uri, u.username
+        SELECT c.source_storage_key, c.source_type, c.source_uri, u.username,
+               b.camera_id AS rtsp_camera_id, b.auth_token AS rtsp_auth_token
         FROM cameras c JOIN users u ON u.id = c.owner_id
+        LEFT JOIN rtsp_camera_registrations b ON b.camera_id = c.id
         WHERE c.id = %s AND c.is_enabled AND c.deleted_at IS NULL FOR UPDATE OF c
     """, (data.camera_id,)).fetchone()
     if source is None:
@@ -1216,7 +1285,7 @@ def start_run(data: RunInput, authorized: Worker, db: Db):
     sample = None
     url = None
     if source["source_type"] == "rtsp":
-        url = resolve_camera(source["username"], source["source_uri"])
+        url = resolve_source(source["username"], source)
     elif source["source_storage_key"]:
         try:
             sample = source_path(source["source_storage_key"])
@@ -1382,6 +1451,68 @@ def ingest(run_id: UUID, data: EventInput, authorized: Worker, db: Db, response:
                 db.execute("INSERT INTO kakao_event_images (event_id, jpeg) VALUES (%s, %s)", (event["id"], jpeg))
     response.status_code = 201
     return event
+
+
+def store_event_clip(db, run_id, event_id, lease, duration_ms, data):
+    run = lock_run(db, run_id, lease, active=False)
+    if run["source_type"] not in {"rtsp", "webcam"}:
+        raise HTTPException(409, "실시간 영상 사건만 클립을 저장할 수 있습니다.")
+    if not run["lease_valid"] or run["status"] not in {"running", "stopping", "stopped"}:
+        raise HTTPException(409, "분석 실행이 종료되었습니다.")
+    event = db.execute("""
+        SELECT id FROM detection_events WHERE id = %s AND run_id = %s AND deleted_at IS NULL FOR UPDATE
+    """, (event_id, run_id)).fetchone()
+    if event is None:
+        raise HTTPException(404, "클립을 연결할 사건을 찾을 수 없습니다.")
+    if db.execute("""
+        SELECT 1 FROM event_media em JOIN media_assets m ON m.id = em.media_asset_id
+        WHERE em.event_id = %s AND m.kind = 'clip'
+    """, (event_id,)).fetchone():
+        return
+    path = managed_path(f"{event_id}.mp4")
+    path.parent.mkdir(mode=0o700, exist_ok=True)
+    temporary = None
+    placed = False
+    try:
+        with NamedTemporaryFile(dir=path.parent, suffix=".part", delete=False) as output:
+            temporary = output.name
+            output.write(data)
+        os.replace(temporary, path)
+        placed = True
+        media = db.execute("""
+            INSERT INTO media_assets (run_id, kind, storage_key, mime_type, size_bytes, sha256,
+                                      duration_ms, status, ready_at)
+            VALUES (%s, 'clip', %s, 'video/mp4', %s, %s, %s, 'ready', now())
+            RETURNING id
+        """, (run_id, f"uploads/{run_id}/{path.name}", len(data),
+              hashlib.sha256(data).hexdigest(), duration_ms)).fetchone()
+        db.execute("INSERT INTO event_media (event_id, media_asset_id, run_id) VALUES (%s, %s, %s)",
+                   (event_id, media["id"], run_id))
+        db.commit()
+    except Exception:
+        if placed:
+            path.unlink(missing_ok=True)
+        raise
+    finally:
+        if temporary is not None and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+@app.post("/internal/v1/runs/{run_id}/events/{event_id}/clip", status_code=204)
+async def upload_event_clip(
+    run_id: UUID, event_id: UUID, request: Request, authorized: Worker, db: Db,
+    lease: Annotated[UUID, Header(alias="X-CCTV-Lease")],
+    duration_ms: Annotated[int, Query(gt=0, le=16_000)],
+):
+    data = bytearray()
+    async for chunk in request.stream():
+        if len(data) + len(chunk) > MAX_CLIP_BYTES:
+            raise HTTPException(413, "사건 클립 크기가 제한을 넘었습니다.")
+        data.extend(chunk)
+    if len(data) < 12 or data[4:8] != b"ftyp":
+        raise HTTPException(415, "MP4 사건 클립을 확인하세요.")
+    await anyio.to_thread.run_sync(store_event_clip, db, run_id, event_id, lease, duration_ms, data)
+    return Response(status_code=204)
 
 
 @app.get("/kakao/event-images/{event_id}.jpg", include_in_schema=False)

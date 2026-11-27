@@ -40,11 +40,15 @@ def public_rtsp_url(value, *, configured=False):
         raise HTTPException(422, "인증 정보를 제외한 RTSP 주소(IP, 포트, 경로)를 입력하세요.") from None
 
 
-def resolve_camera(username, public_url):
+def require_rtsp_user(username):
     # 회원가입 계정에 서버 내부 네트워크 접근을 자동으로 허용하지 않는다.
     accounts = os.getenv("CCTV_RTSP_USERS", "").split(",")
     if username not in {account.strip() for account in accounts if account.strip()}:
         raise HTTPException(403, "이 계정에 RTSP 사용 권한이 없습니다. 서버 설정을 확인하세요.")
+
+
+def allowed_cameras(username):
+    require_rtsp_user(username)
     try:
         urls = json.loads(os.getenv("CCTV_RTSP_URLS", "[]"))
         if not isinstance(urls, list) or not all(isinstance(url, str) for url in urls):
@@ -54,6 +58,29 @@ def resolve_camera(username, public_url):
             raise ValueError
     except (HTTPException, ValueError):
         raise HTTPException(503, "서버의 RTSP 설정을 확인하세요.") from None
+    return allowed
+
+
+def registered_camera_url(username, value):
+    # IP만 입력하면 서버가 승인한 스트림 중 주소가 하나로 결정될 때 연결한다.
+    allowed = allowed_cameras(username)
+    try:
+        host = str(ip_address(value))
+    except ValueError:
+        public_url = public_rtsp_url(value)
+        if public_url in allowed:
+            return public_url
+    else:
+        matches = [url for url in allowed if urlsplit(url).hostname == host]
+        if len(matches) == 1:
+            return matches[0]
+        if matches:
+            raise HTTPException(422, "같은 IP에 여러 스트림이 등록되어 있습니다. 전체 RTSP 주소를 입력하세요.")
+    raise HTTPException(422, "서버에 등록된 카메라 IP 또는 RTSP 주소를 입력하세요.")
+
+
+def resolve_camera(username, public_url):
+    allowed = allowed_cameras(username)
     if public_url not in allowed:
         raise HTTPException(422, "서버에서 허용한 RTSP 주소를 입력하세요.")
     return allowed[public_url]
