@@ -26,6 +26,7 @@ LABELS = {"fall": "넘어짐", "vandalism": "파손", "arson": "방화", "smokin
 MEMO = "https://kapi.kakao.com/v2/api/talk/memo/default/send"
 TOKEN = "https://kauth.kakao.com/oauth/token"
 TOKEN_INFO = "https://kapi.kakao.com/v1/user/access_token_info"
+USER_INFO = "https://kapi.kakao.com/v2/user/me"
 KST = timezone(timedelta(hours=9))
 
 
@@ -86,6 +87,34 @@ def bearer(tokens):
     return {"Authorization": "Bearer " + tokens["access_token"]}
 
 
+def linked_tokens(user_id, subject):
+    path = token_path(user_id)
+    if os.name == "posix" and path.stat().st_mode & 0o077:
+        raise KakaoError("unsafe_secret_permissions")
+    tokens = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(tokens, dict) or tokens.get("subject") != subject:
+        raise KakaoError("recipient_mismatch")
+    return tokens
+
+
+def profile_nickname(session, tokens, subject):
+    try:
+        profile = request(session, "GET", USER_INFO, headers=bearer(tokens))
+    except KakaoError:
+        # 프로필 조회가 실패해도 이미 동의한 메시지 전송은 연결한다.
+        return None
+    if str(profile.get("id")) != subject:
+        return None
+    account = profile.get("kakao_account")
+    details = account.get("profile") if isinstance(account, dict) else None
+    properties = profile.get("properties")
+    for values in (details, properties):
+        nickname = values.get("nickname") if isinstance(values, dict) else None
+        if isinstance(nickname, str) and (nickname := nickname.strip()):
+            return nickname[:120]
+    return None
+
+
 def refresh(session, tokens):
     if not tokens.get("refresh_token") or not tokens.get("rest_api_key"):
         raise KakaoError("reauthorization_required")
@@ -124,12 +153,7 @@ def message(event, link):
 
 
 def send(session, event, link):
-    path = token_path(event["recipient_user_id"])
-    if os.name == "posix" and path.stat().st_mode & 0o077:
-        raise KakaoError("unsafe_secret_permissions")
-    tokens = json.loads(path.read_text(encoding="utf-8"))
-    if tokens["subject"] != event["provider_subject"]:
-        raise KakaoError("recipient_mismatch")
+    tokens = linked_tokens(event["recipient_user_id"], event["provider_subject"])
     payload = {"template_object": json.dumps(message(event, link), ensure_ascii=False)}
     try:
         result = request(session, "POST", MEMO, data=payload, headers=bearer(tokens))
@@ -218,6 +242,20 @@ def lock_recipient(db, user_id):
     db.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (REF + str(user_id),))
 
 
+def disconnect_account(db, user_id):
+    lock_recipient(db, user_id)
+    db.execute("""
+        UPDATE oauth_accounts SET is_enabled = false
+        WHERE user_id = %s AND provider = 'kakao' AND token_secret_ref = %s
+    """, (user_id, REF + str(user_id)))
+    db.execute("""
+        UPDATE notification_deliveries n SET status = 'cancelled', lease_token = NULL, lease_expires_at = NULL
+        FROM oauth_accounts a
+        WHERE n.oauth_account_id = a.id AND a.user_id = %s AND a.provider = 'kakao'
+          AND a.token_secret_ref = %s AND n.status IN ('queued', 'retry_wait', 'delivering')
+    """, (user_id, REF + str(user_id)))
+
+
 def save_link(db, user_id, subject, tokens):
     with db.transaction():
         lock_recipient(db, user_id)
@@ -276,8 +314,22 @@ def link_account(db, session, username, legacy):
         subject = identity(session, tokens)
     if current is not None and str(current) != subject:
         raise KakaoError("legacy_account_mismatch")
+    tokens["nickname"] = profile_nickname(session, tokens, subject)
     save_link(db, user["id"], subject, tokens)
     print("카카오톡 수신 계정을 연결했습니다. 메시지는 발송하지 않았습니다.")
+
+
+def delivery_link():
+    url = os.getenv("CCTV_KAKAO_LINK_URL", "").strip()
+    try:
+        parts = urlsplit(url)
+        local_http = parts.scheme == "http" and parts.hostname in {"127.0.0.1", "localhost", "::1"}
+        if (parts.hostname and "@" not in parts.netloc and not parts.query and not parts.fragment
+                and (parts.scheme == "https" or local_http)):
+            return url
+    except ValueError:
+        pass
+    return None
 
 
 def main():
@@ -288,16 +340,9 @@ def main():
     link.add_argument("--legacy", action="store_true", help="기존 GUI의 로컬 인증 파일을 읽는다.")
     commands.add_parser("serve", help="예약된 카카오톡 알림 발송을 시작한다.")
     args = parser.parse_args()
-    url = os.getenv("CCTV_KAKAO_LINK_URL", "")
-    if args.command == "serve":
-        try:
-            parts = urlsplit(url)
-            local_http = parts.scheme == "http" and parts.hostname in {"127.0.0.1", "localhost", "::1"}
-            if (not parts.hostname or "@" in parts.netloc or parts.query
-                    or (parts.scheme != "https" and not local_http)):
-                raise ValueError
-        except ValueError:
-            parser.error("카카오 앱에 등록된 관제 주소를 CCTV_KAKAO_LINK_URL에 설정하세요.")
+    url = delivery_link()
+    if args.command == "serve" and url is None:
+        parser.error("카카오 앱에 등록된 관제 주소를 CCTV_KAKAO_LINK_URL에 설정하세요.")
     try:
         with connect() as db, requests.Session() as session:
             db.autocommit = True

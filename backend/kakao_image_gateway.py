@@ -75,13 +75,18 @@ class PhotoHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
 
 
+def photo_gateway(port, api_port):
+    server = Gateway(("127.0.0.1", port), PhotoHandler)
+    server.api_port = api_port
+    return server
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--port", type=int, default=18082)
     parser.add_argument("--api-port", type=int, default=8000)
     args = parser.parse_args()
-    with Gateway(("127.0.0.1", args.port), PhotoHandler) as server:
-        server.api_port = args.api_port
+    with photo_gateway(args.port, args.api_port) as server:
         print(f"사건 사진 전용 게이트웨이: 127.0.0.1:{args.port}", flush=True)
         try:
             server.serve_forever()

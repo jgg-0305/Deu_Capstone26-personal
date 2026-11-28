@@ -22,9 +22,9 @@ from psycopg import sql
 from psycopg.rows import dict_row
 from fastapi.testclient import TestClient
 
-from backend.api import app, database
+from backend.api import app, database, resume_rtsp
 from backend.behavior_upload import bundled_behavior_artifact
-from backend.kakao_notify import deliver_next
+from backend.kakao_notify import deliver_next, message
 from backend.kakao_images import signed_url
 from backend.rtsp_registration import resolve_source
 from backend.worker import encode_event_image
@@ -196,6 +196,52 @@ class StorageCleanupTests(unittest.TestCase):
                 self.assertIsNone(db.execute("SELECT 1 FROM rtsp_camera_registrations WHERE camera_id=%s",
                                              (camera_id,)).fetchone())
 
+    def test_rename_updates_past_events_and_bulk_delete_is_atomic(self):
+        source = self.source()
+        one, _ = self.event(source)
+        two, _ = self.event(source)
+        response = self.client.patch(f"/api/v1/cameras/{source['camera']}", json={"name": "새 입구"})
+        self.assertEqual(response.status_code, 200, response.text)
+        rows = self.client.get("/api/v1/events").json()
+        self.assertEqual({row["camera_name"] for row in rows}, {"새 입구"})
+        bad = self.client.post("/api/v1/events/delete", json={"event_ids": [one, str(uuid4())]})
+        self.assertEqual(bad.status_code, 404, bad.text)
+        self.assertEqual(len(self.client.get("/api/v1/events").json()), 2)
+        good = self.client.post("/api/v1/events/delete", json={"event_ids": [one, two]})
+        self.assertEqual(good.status_code, 204, good.text)
+        self.assertEqual(self.client.get("/api/v1/events").json(), [])
+        self.assertTrue((self.folder / source["filename"]).is_file())
+
+    def test_restart_requeues_a_stopped_rtsp_camera_once_with_its_settings(self):
+        source = self.source()
+        with self.db() as db:
+            db.execute("""
+                UPDATE cameras SET source_type='rtsp', source_storage_key=NULL,
+                    source_uri='rtsp://127.0.0.1:8554/sample' WHERE id=%s
+            """, (source["camera"],))
+            db.execute("UPDATE inference_runs SET status='stopped',ended_at=now() WHERE id=%s", (source["run"],))
+            db.execute("""
+                INSERT INTO analysis_jobs(camera_id,status,threshold,settings)
+                VALUES (%s,'stopped',0.9,'{"detection_interval":2,"pose_model":"human_pose"}')
+            """, (source["camera"],))
+            for role, name, digest in (("pose","human_pose","a" * 64),
+                                       ("behavior","behavior",bundled_behavior_artifact()["sha256"])):
+                db.execute("""
+                    INSERT INTO model_artifacts(role,name,version,sha256,storage_key,size_bytes,labels,preprocessing)
+                    VALUES (%s,%s,'test',%s,%s,1,'{}','{}')
+                """, (role, name, digest, name))
+        with patch("backend.api.resolve_source"), patch.dict(os.environ, {"CCTV_RETIRED_MODELS": "",
+                                                                           "CCTV_DEFAULT_BEHAVIOR_MODEL": "behavior"}):
+            for _ in range(2):
+                with self.db() as db:
+                    resume_rtsp(db)
+        with self.db() as db:
+            rows = db.execute("SELECT settings, threshold FROM analysis_jobs WHERE camera_id=%s AND status='queued'",
+                              (source["camera"],)).fetchall()
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["settings"]["detection_interval"], 2)
+        self.assertEqual(rows[0]["threshold"], .9)
+
     def test_kakao_live_event_is_queued_once_and_sent_without_network(self):
         source = self.source()
         with self.db() as db:
@@ -226,15 +272,24 @@ class StorageCleanupTests(unittest.TestCase):
         self.assertEqual(next(row['kakao_status'] for row in events if row['id'] == event), 'sent')
 
     def test_kakao_image_requires_signature_and_disappears_on_event_deletion(self):
+        self.check_kakao_image_for_source(rtsp=False)
+
+    def test_rtsp_kakao_image_is_included_without_file_alerts(self):
+        self.check_kakao_image_for_source(rtsp=True)
+
+    def check_kakao_image_for_source(self, *, rtsp):
         source = self.source()
         with self.db() as db:
+            if rtsp:
+                db.execute("""UPDATE cameras SET source_type='rtsp', source_storage_key=NULL,
+                           source_uri='rtsp://192.0.2.10:554/stream1' WHERE id=%s""", (source['camera'],))
             db.execute("""
                 INSERT INTO oauth_accounts (user_id, provider, provider_subject, token_secret_ref)
                 VALUES (%s, 'kakao', '123', %s)
             """, (self.owner, 'local-kakao:' + str(self.owner)))
         photo = encode_event_image(np.zeros((1080, 1920, 3), dtype=np.uint8))
         with patch.dict(os.environ, {
-            'CCTV_KAKAO_INCLUDE_FILES': '1',
+            'CCTV_KAKAO_INCLUDE_FILES': '0' if rtsp else '1',
             'CCTV_KAKAO_IMAGE_BASE_URL': 'https://test.example.com',
             'CCTV_KAKAO_IMAGE_SECRET': 'test-image-secret-not-for-production',
         }):
@@ -243,6 +298,7 @@ class StorageCleanupTests(unittest.TestCase):
                 self.assertTrue(deliver_next(db, Mock(), 'https://example.test'))
                 delivery = send.call_args.args[1]
                 link = signed_url(delivery['event_id'], delivery['image_expires_at'])
+                self.assertEqual(message(delivery, 'https://example.test')['content']['image_url'], link)
             url = urlsplit(link)
             endpoint = url.path + '?' + url.query
             unauthenticated = TestClient(app, raise_server_exceptions=False)
@@ -264,14 +320,16 @@ class StorageCleanupTests(unittest.TestCase):
         origin = 'http://127.0.0.1:8000'
         with TestClient(app, base_url=origin) as browser, patch.dict(os.environ, {
             'CCTV_KAKAO_REST_API_KEY': 'mock-app-key', 'CCTV_KAKAO_REDIRECT_URI': origin + '/kakao/callback',
+            'CCTV_KAKAO_PROFILE_SCOPE': 'profile_nickname',
         }), patch('backend.kakao_notify.SECRET_DIR', self.folder), patch('backend.kakao_notify.request') as kakao:
             browser.cookies.set('cctv_session', self.token)
+            self.assertFalse(browser.get('/api/v1/kakao/status').json()['connected'])
             pending = browser.post('/api/v1/kakao/login', headers={'X-CCTV-Request': '1'})
             self.assertEqual(pending.status_code, 200, pending.text)
             redirect = urlsplit(pending.json()['url'])
             self.assertEqual((redirect.scheme, redirect.hostname), ('https', 'kauth.kakao.com'))
             params = parse_qs(redirect.query)
-            self.assertEqual(params['scope'], ['talk_message'])
+            self.assertEqual(params['scope'], ['talk_message,profile_nickname'])
             state = params['state'][0]
 
             bad = browser.get('/kakao/callback', params={'state': 'wrong', 'code': 'code'}, follow_redirects=False)
@@ -279,13 +337,21 @@ class StorageCleanupTests(unittest.TestCase):
             kakao.assert_not_called()
 
             kakao.side_effect = [{'access_token': 'mock-access', 'refresh_token': 'mock-refresh'},
-                                 {'id': 123}, {'scopes': [{'id': 'talk_message', 'agreed': True}]}]
+                                 {'id': 123}, {'scopes': [{'id': 'talk_message', 'agreed': True}]},
+                                 {'id': 123, 'kakao_account': {'profile': {'nickname': '관제 계정'}}}]
             good = browser.get('/kakao/callback', params={'state': state, 'code': 'code'}, follow_redirects=False)
             self.assertEqual(good.headers['location'], '/?kakao=connected', good.text)
-            self.assertTrue(browser.get('/api/v1/kakao/status').json()['connected'])
+            status = browser.get('/api/v1/kakao/status').json()
+            self.assertTrue(status['connected'])
+            self.assertEqual(status['nickname'], '관제 계정')
             replay = browser.get('/kakao/callback', params={'state': state, 'code': 'code'}, follow_redirects=False)
             self.assertEqual(replay.headers['location'], '/?kakao=expired')
-            self.assertEqual(kakao.call_count, 3)
+            self.assertEqual(kakao.call_count, 4)
+            self.assertEqual(browser.post('/api/v1/kakao/logout', headers={'X-CCTV-Request': '1'}).status_code, 204)
+            status = browser.get('/api/v1/kakao/status').json()
+            self.assertFalse(status['connected'])
+            self.assertIsNone(status['nickname'])
+            self.assertEqual(browser.get('/api/v1/auth/me').status_code, 200)
 
     def test_event_delete_keeps_video_and_retry_cannot_restore_event(self):
         source = self.source()

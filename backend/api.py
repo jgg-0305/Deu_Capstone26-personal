@@ -3,7 +3,9 @@
 """인증이 필요한 웹 API와 분석 워커용 내부 API."""
 
 import hashlib
+from contextlib import asynccontextmanager
 import json
+import logging
 import os
 import secrets
 import subprocess
@@ -21,7 +23,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from psycopg import Connection, Error, OperationalError
 from psycopg.errors import ForeignKeyViolation, UndefinedColumn, UndefinedTable, UniqueViolation
 from psycopg.types.json import Jsonb
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, StringConstraints, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, SecretStr, StringConstraints, ValidationError, field_validator, model_validator
 
 from backend.analysis_media import FRAME_LIMIT, frame_path, read_snapshot, replace_frame
 from backend.behavior_upload import (
@@ -39,7 +41,24 @@ from backend.rtsp_registration import encrypt_camera_login, prepare_camera, reso
 from backend.samples import MAX_CLIP_BYTES, MAX_VIDEO_BYTES, ROOT, UPLOAD_DIR, asset_path, source_path
 from backend.storage import cleanup_camera, inventory, managed_path, prepare_purge
 
-app = FastAPI(title="CCTV API", docs_url=None, redoc_url=None, openapi_url=None)
+logger = logging.getLogger("uvicorn.error")
+
+
+def resume_rtsp_on_startup():
+    try:
+        with connect() as db:
+            resume_rtsp(db)
+    except (Error, DatabaseConfigurationError):
+        logger.warning("DB 준비 상태를 확인할 수 없어 RTSP 자동 재개를 건너뛰었습니다.")
+
+
+@asynccontextmanager
+async def lifespan(_app):
+    await anyio.to_thread.run_sync(resume_rtsp_on_startup)
+    yield
+
+
+app = FastAPI(title="CCTV API", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
 FRONTEND_DIST = ROOT / "frontend" / "dist"
 
 bearer = HTTPBearer(auto_error=False)
@@ -246,6 +265,14 @@ class CameraInput(Input):
     settings: AnalysisInput = Field(default_factory=AnalysisInput)
 
 
+class SourceNameInput(Input):
+    name: ShortText
+
+
+class BulkEventDeleteInput(Input):
+    event_ids: list[UUID] = Field(min_length=1, max_length=100)
+
+
 class RtspInput(Input):
     name: ShortText
     url: str = Field(min_length=1, max_length=2048)
@@ -449,11 +476,27 @@ def kakao_state_digest(value):
 @app.get("/api/v1/kakao/status")
 def kakao_status(user: Owner, db: Db):
     linked = db.execute("""
-        SELECT 1 FROM oauth_accounts WHERE user_id = %s AND provider = 'kakao'
+        SELECT provider_subject FROM oauth_accounts WHERE user_id = %s AND provider = 'kakao'
             AND is_enabled AND token_secret_ref = %s
     """, (user["id"], kakao_notify.REF + str(user["id"]))).fetchone()
-    return {"connected": linked is not None, "configured": kakao_settings() is not None,
+    tokens = {}
+    if linked is not None:
+        try:
+            tokens = kakao_notify.linked_tokens(user["id"], linked["provider_subject"])
+        except (OSError, ValueError, kakao_notify.KakaoError):
+            pass
+    connected = bool(tokens.get("access_token") or tokens.get("refresh_token"))
+    return {"connected": connected, "nickname": tokens.get("nickname") if connected else None,
+            "configured": kakao_settings() is not None,
+            "delivery_configured": kakao_notify.delivery_link() is not None,
             "allowed": not user["is_test_admin"]}
+
+
+@app.post("/api/v1/kakao/logout", status_code=204)
+def kakao_logout(response: Response, user: Owner, db: Db):
+    kakao_notify.disconnect_account(db, user["id"])
+    db.execute("DELETE FROM kakao_oauth_states WHERE session_id = %s", (user["session_id"],))
+    response.delete_cookie(KAKAO_STATE_COOKIE, path=KAKAO_CALLBACK, samesite="lax")
 
 
 @app.post("/api/v1/kakao/login")
@@ -477,9 +520,13 @@ def kakao_login(request: Request, response: Response, user: Owner, db: Db):
     """, (kakao_state_digest(state), user["session_id"]))
     response.set_cookie(KAKAO_STATE_COOKIE, state, max_age=600, path=KAKAO_CALLBACK,
                         httponly=True, samesite="lax", secure=destination.scheme == "https")
+    profile_scope = os.getenv("CCTV_KAKAO_PROFILE_SCOPE", "").strip()
+    scope = "talk_message"
+    if profile_scope in {"profile_nickname", "profile"}:
+        scope += "," + profile_scope
     return {"url": "https://kauth.kakao.com/oauth/authorize?" + urlencode({
         "client_id": key, "redirect_uri": redirect, "response_type": "code",
-        "state": state, "scope": "talk_message", "prompt": "select_account",
+        "state": state, "scope": scope, "prompt": "select_account",
     })}
 
 
@@ -535,6 +582,7 @@ def kakao_callback(request: Request, db: Db, state: str = "", code: str = "", er
             ).get("scopes") or []
             if not any(scope.get("id") == "talk_message" and scope.get("agreed") is True for scope in scopes):
                 return back("permission")
+            tokens["nickname"] = kakao_notify.profile_nickname(session, tokens, subject)
         if db.execute(account_sql + " FOR SHARE OF s, u", (pending["session_id"],)).fetchone() is None:
             return back("expired")
         kakao_notify.save_link(db, owner["id"], subject, tokens)
@@ -782,6 +830,21 @@ def remove_camera(camera_id: UUID, user: Owner, db: Db):
     return Response(status_code=204)
 
 
+@app.patch("/api/v1/cameras/{camera_id}")
+def rename_camera(camera_id: UUID, data: SourceNameInput, user: Owner, db: Db):
+    try:
+        row = db.execute("""
+            UPDATE cameras SET name = %s, updated_at = now()
+            WHERE id = %s AND owner_id = %s AND deleted_at IS NULL
+            RETURNING id, name
+        """, (data.name, camera_id, user["id"])).fetchone()
+    except UniqueViolation:
+        raise HTTPException(409, "같은 이름으로 등록된 영상 소스가 있습니다.") from None
+    if row is None:
+        raise HTTPException(404, "영상 소스를 찾을 수 없습니다.")
+    return row
+
+
 @app.get("/api/v1/cameras/{camera_id}/snapshot")
 def snapshot(camera_id: UUID, user: User, db: Db):
     row = db.execute("""
@@ -927,6 +990,37 @@ def expire_jobs(db, camera_id=None):
                 AND r.lease_expires_at <= clock_timestamp()
           ))
     """, (camera_id, camera_id))
+
+
+def resume_rtsp(db):
+    # 실행기 정상 종료로 작업이 종료된 RTSP 소스만 기존 설정으로 다시 예약한다.
+    sources = db.execute("""
+        SELECT c.id, c.source_uri, u.username, b.camera_id AS rtsp_camera_id,
+               b.auth_token AS rtsp_auth_token, j.threshold, j.settings
+        FROM cameras c JOIN users u ON u.id = c.owner_id
+        LEFT JOIN rtsp_camera_registrations b ON b.camera_id = c.id
+        LEFT JOIN LATERAL (
+            SELECT threshold, settings FROM analysis_jobs WHERE camera_id = c.id
+            ORDER BY requested_at DESC, id DESC LIMIT 1
+        ) j ON true
+        WHERE c.source_type = 'rtsp' AND c.is_enabled AND c.deleted_at IS NULL
+          AND u.is_active AND u.disabled_at IS NULL
+          AND NOT EXISTS (SELECT 1 FROM analysis_jobs p WHERE p.camera_id = c.id
+                          AND p.status IN ('queued', 'claimed'))
+          AND NOT EXISTS (SELECT 1 FROM inference_runs r WHERE r.camera_id = c.id
+                          AND r.status = ANY(%s) AND r.lease_expires_at > clock_timestamp())
+        ORDER BY c.created_at, c.id FOR UPDATE OF c SKIP LOCKED
+    """, (list(ACTIVE_RUNS),)).fetchall()
+    for source in sources:
+        try:
+            with db.transaction():
+                resolve_source(source["username"], source)
+                settings = dict(source["settings"] or {})
+                if source["threshold"] is not None:
+                    settings["threshold"] = source["threshold"]
+                enqueue(db, source["id"], AnalysisInput(**settings))
+        except (HTTPException, ValidationError, UniqueViolation):
+            logger.warning("RTSP 자동 재개 실패: 카메라 %s의 접속 또는 모델 설정을 확인하세요.", source["id"])
 
 
 @app.post("/api/v1/cameras/{camera_id}/analysis", status_code=202)
@@ -1157,30 +1251,47 @@ def review(event_id: UUID, data: ReviewInput, user: Owner, db: Db):
 
 @app.delete("/api/v1/events/{event_id}", status_code=204)
 def delete_event(event_id: UUID, user: Owner, db: Db):
-    row = db.execute('''
+    remove_events(db, user, [event_id])
+    return Response(status_code=204)
+
+
+@app.post("/api/v1/events/delete", status_code=204)
+def delete_selected_events(data: BulkEventDeleteInput, user: Owner, db: Db):
+    remove_events(db, user, list(dict.fromkeys(data.event_ids)))
+    return Response(status_code=204)
+
+
+def remove_events(db, user, event_ids):
+    rows = db.execute('''
         UPDATE detection_events e SET deleted_at = COALESCE(e.deleted_at, now()), evidence = '{}'::jsonb
         FROM inference_runs r, cameras c
-        WHERE e.id = %s AND e.run_id = r.id AND r.camera_id = c.id AND c.owner_id = %s
-        RETURNING e.id, c.id AS camera_id
-    ''', (event_id, user['id'])).fetchone()
-    if row is None:
-        raise HTTPException(404, "사건을 찾을 수 없습니다.")
+        WHERE e.id = ANY(%s) AND e.run_id = r.id AND r.camera_id = c.id AND c.owner_id = %s
+        RETURNING e.id
+    ''', (event_ids, user['id'])).fetchall()
+    if len(rows) != len(event_ids):
+        raise HTTPException(404, "선택한 사건 중 조회할 수 없는 항목이 있습니다. 목록을 새로고침하세요.")
     db.execute('''UPDATE notification_deliveries SET status = 'cancelled', lease_token = NULL, lease_expires_at = NULL
-                  WHERE event_id = %s AND status IN ('queued', 'retry_wait', 'delivering')''', (event_id,))
-    clip = db.execute("""
+                  WHERE event_id = ANY(%s) AND status IN ('queued', 'retry_wait', 'delivering')''', (event_ids,))
+    clips = db.execute("""
         UPDATE media_assets m SET status = 'deleting'
-        FROM event_media em
-        WHERE em.event_id = %s AND em.media_asset_id = m.id AND m.kind = 'clip' AND m.status = 'ready'
-        RETURNING m.storage_key
-    """, (event_id,)).fetchone()
-    if clip:
+        FROM event_media em, inference_runs r
+        WHERE em.event_id = ANY(%s) AND em.media_asset_id = m.id AND m.run_id = r.id
+          AND m.kind = 'clip' AND m.status = 'ready'
+          AND NOT EXISTS (
+              SELECT 1 FROM event_media other JOIN detection_events e ON e.id = other.event_id
+              WHERE other.media_asset_id = m.id AND e.deleted_at IS NULL
+          )
+        RETURNING m.storage_key, r.camera_id
+    """, (event_ids,)).fetchall()
+    for clip in clips:
         db.execute("""
             INSERT INTO storage_deletions(camera_id, filename) VALUES (%s, %s)
             ON CONFLICT (camera_id, filename) DO NOTHING
-        """, (row["camera_id"], clip["storage_key"].rsplit("/", 1)[-1]))
+        """, (clip["camera_id"], clip["storage_key"].rsplit("/", 1)[-1]))
+    if clips:
         db.commit()
-        cleanup_camera(db, row["camera_id"])
-    return Response(status_code=204)
+        for camera_id in {clip["camera_id"] for clip in clips}:
+            cleanup_camera(db, camera_id)
 
 
 @app.get("/api/v1/storage")

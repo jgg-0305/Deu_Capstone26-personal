@@ -59,6 +59,26 @@ class KakaoTests(unittest.TestCase):
         self.assertFalse(caught.exception.retry)
         session.request.assert_called_once()
 
+    def test_nickname_is_read_only_for_the_linked_account(self):
+        session = Mock()
+        tokens = {"access_token": "test"}
+        session.request.return_value = response(200, {
+            "id": 123, "kakao_account": {"profile": {"nickname": " 관제 계정 "}},
+        })
+        self.assertEqual(kakao.profile_nickname(session, tokens, "123"), "관제 계정")
+        self.assertIsNone(kakao.profile_nickname(session, tokens, "456"))
+        session.request.return_value = response(200, {"id": 123, "kakao_account": {}})
+        self.assertIsNone(kakao.profile_nickname(session, tokens, "123"))
+        session.request.return_value = response(503, {})
+        self.assertIsNone(kakao.profile_nickname(session, tokens, "123"))
+
+    def test_delivery_link_requires_a_valid_dashboard_address(self):
+        for url, result in (("", None), ("http://192.0.2.10", None),
+                            ("https://dashboard.example/#fragment", None),
+                            ("http://127.0.0.1:8000", "http://127.0.0.1:8000")):
+            with self.subTest(url=url), patch.dict("os.environ", CCTV_KAKAO_LINK_URL=url):
+                self.assertEqual(kakao.delivery_link(), result)
+
     def test_public_photo_url_is_included_in_feed_when_configured(self):
         event = {**self.event, "image_expires_at": datetime.now(timezone.utc) + timedelta(hours=2)}
         with patch.dict("os.environ", CCTV_KAKAO_IMAGE_BASE_URL="https://images.example.com",

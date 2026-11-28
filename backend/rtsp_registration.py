@@ -29,6 +29,8 @@ def direct_url(public_url):
     parts = urlsplit(public_url)
     address = ip_address(parts.hostname)
     networks = camera_networks()
+    if not networks:
+        raise HTTPException(503, "서버에 웹 카메라 등록 범위(CCTV_RTSP_NETWORKS)를 설정하세요.")
     if not any(address in net for net in networks):
         raise HTTPException(403, "웹 등록이 허용된 카메라 네트워크의 IP를 입력하세요.")
     try:

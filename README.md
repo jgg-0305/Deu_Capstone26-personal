@@ -438,19 +438,45 @@ Windows와 macOS의 결과를 비교할 때는 포즈·행동·상품·가방 �
 3. 통합 실행기를 재시작하고 일반 관제 계정으로 로그인합니다. 상단 **카카오 로그인**에서 계정을 연결하고 메시지 전송에 동의합니다.
 4. 이후 RTSP·웹캠에서 발생한 대상 사건이 **나와의 채팅**으로 발송됩니다. 파일과 샘플도 확인하려면 서버에 `CCTV_KAKAO_INCLUDE_FILES=1`을 설정하고 다시 시작합니다. 기존 사건은 소급 발송하지 않습니다.
 
-메시지 발송은 기존 API와 알림 워커를 사용합니다. **사건 사진**을 피드 카드에 표시할 때는 카카오 서버가 읽을 수 있는 HTTPS 주소를 추가합니다. 예를 들어 별도 터미널에서 사진 게이트웨이와 터널을 실행합니다.
+상단에서 카카오톡 상태를 확인합니다. 연결 중이면 **카카오톡 로그아웃**, 연결이 없으면 **카카오톡 로그인** 버튼이 표시됩니다. 카카오톡에서 로그아웃하면 관제실 세션은 유지되고 해당 계정으로 보낼 대기 알림은 취소됩니다. 닉네임을 표시하려면 카카오디벨로퍼스의 **카카오 로그인 → 동의항목 → 개인정보 → 닉네임**을 활성화하고 서버에 `CCTV_KAKAO_PROFILE_SCOPE=profile_nickname`을 설정합니다. 기존 앱이 **프로필 정보(닉네임/프로필 사진)** 동의항목을 사용하면 값은 `profile`입니다. 서버 재시작 후 카카오톡에서 로그아웃하고 로그인하여 닉네임 제공에 동의하면 표시됩니다.
 
-```powershell
-# Windows PowerShell
-& .\.venv-web\Scripts\python.exe -m backend.kakao_image_gateway --port 18082 --api-port 8000
-```
+### 사건 사진 자동 시작
+
+Mac과 Windows에서 ngrok을 설치하고 `ngrok config add-authtoken`으로 해당 PC의 ngrok 에이전트를 한 번 인증합니다. ngrok 대시보드에 표시된 본인의 HTTPS 도메인을 사용합니다. 두 PC를 동시에 실행할 때는 각 PC에 서로 다른 도메인을 지정합니다. 이미 수동으로 켠 사진 게이트웨이와 ngrok은 자동 시작으로 전환하기 전에 종료합니다.
+
+기존 Mac 소켓 DB를 사용하는 경우 `.local-db/web.env`에 아래 값을 저장합니다. `CCTV_KAKAO_IMAGE_SECRET`이 이미 있으면 해당 값을 재사용합니다. 새 Mac의 TCP DB 환경에서는 같은 설정을 평소 서버 실행 셸에 불러옵니다.
 
 ```bash
-# macOS Terminal
-.venv-web/bin/python -m backend.kakao_image_gateway --port 18082 --api-port 8000
+export CCTV_KAKAO_NGROK=1
+export CCTV_KAKAO_IMAGE_BASE_URL='https://your-domain.ngrok-free.dev'
+# 최초 1회 생성한 값을 같은 설정 파일에 저장
+.venv-web/bin/python -c 'import secrets; print(secrets.token_urlsafe(48))'
 ```
 
-ngrok을 쓰는 경우 다른 터미널에서 `ngrok http http://127.0.0.1:18082 --inspect=false`를 실행합니다. 표시된 HTTPS 주소를 `CCTV_KAKAO_IMAGE_BASE_URL`에 넣고, Python의 `secrets.token_urlsafe(32)`로 생성한 서버 비밀키를 `CCTV_KAKAO_IMAGE_SECRET`에 설정합니다. 환경을 저장한 뒤 관제 서버를 다시 시작합니다. HTTPS로 공개하는 대상은 사건 사진 경로이며, 서명 링크의 유효 기간은 최대 1시간입니다.
+생성한 값을 `export CCTV_KAKAO_IMAGE_SECRET='생성한 값'`으로 저장한 뒤, 평소대로 실행합니다.
+
+```bash
+bash backend/run_local_mac.sh --port 8000
+```
+
+Windows PowerShell에서는 사용자 환경 변수에 한 번 저장한 뒤 새 터미널에서 평소 서버 실행 명령어를 사용합니다.
+
+```powershell
+$Py = '.\.venv-web\Scripts\python.exe'
+[Environment]::SetEnvironmentVariable('CCTV_KAKAO_NGROK', '1', 'User')
+[Environment]::SetEnvironmentVariable('CCTV_KAKAO_IMAGE_BASE_URL', 'https://your-domain.ngrok-free.dev', 'User')
+if (-not [Environment]::GetEnvironmentVariable('CCTV_KAKAO_IMAGE_SECRET', 'User')) {
+    $KakaoPhotoSecret = & $Py -c "import secrets; print(secrets.token_urlsafe(48))"
+    [Environment]::SetEnvironmentVariable('CCTV_KAKAO_IMAGE_SECRET', $KakaoPhotoSecret, 'User')
+}
+```
+
+```powershell
+# 새 PowerShell에서 프로젝트 루트를 열고 실행
+& .\.venv-web\Scripts\python.exe -m backend.run_local --port 8000
+```
+
+두 운영체제 모두 같은 통합 실행기가 사진 게이트웨이와 ngrok을 시작하고 서버 종료 시 함께 닫습니다. 출력에서 **카카오톡 사진 게이트웨이**와 **카카오톡 사진용 ngrok**을 확인할 수 있습니다. HTTPS에서는 유효한 서명이 있는 사건 사진만 제공되며, 링크 유효 기간은 최대 1시간입니다. 사진이 포함되는지는 변경 후 새로 감지된 RTSP 사건의 **나와의 채팅** 카드에서 확인합니다.
 
 ## 데이터베이스와 pgAdmin
 

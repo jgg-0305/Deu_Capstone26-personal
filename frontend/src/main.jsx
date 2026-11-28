@@ -132,31 +132,73 @@ function RtspPreview({ source }) {
   </>;
 }
 
-function SourceTile({ source, selected, onSelect, onVideoError, remove, style, hidden, snapshot, display, pending }) {
+function SourceTile({ source, selected, onSelect, onVideoError, rename, remove, style, hidden, snapshot, display, pending }) {
   const live = liveTypes.has(source.source_type);
   const [overlay, setOverlay] = useState(true);
+  const [editing, setEditing] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [nameError, setNameError] = useState("");
+  const renameDialog = useRef(null);
+  useEffect(() => {
+    const dialog = renameDialog.current;
+    if (editing && dialog && !dialog.open) dialog.showModal();
+  }, [editing]);
   const workerPreview = source.status === "running" && snapshot?.image && snapshot.run_id === source.run_id;
   const visibleDisplay = overlay ? display : {
     box: false, id: false, points: false, label: false,
   };
+  async function saveName(event) {
+    event.preventDefault();
+    const name = new FormData(event.currentTarget).get("name").trim();
+    setNameError("");
+    if (!name) { setNameError("표시 이름을 입력하세요."); return; }
+    setSavingName(true);
+    try {
+      await rename(name);
+      renameDialog.current?.close();
+    } catch (error) { setNameError(error.message); }
+    finally { setSavingName(false); }
+  }
   return <article className={"tile" + (selected ? " selected" : "")} style={style} hidden={hidden}>
     <div className="tile-head">
       <button className="tile-name" aria-current={selected} onClick={onSelect}>{source.name}</button>
       <span className={"tile-state " + source.status}>{states[source.status] ?? source.status}</span>
-      <div className="switch overlay-toggle" aria-label="영상 표시 방식">
-        <button type="button" aria-pressed={!overlay} onClick={() => setOverlay(false)}>원본</button>
-        <button type="button" aria-pressed={overlay} onClick={() => setOverlay(true)}>AI 분석</button>
+      <div className="tile-actions">
+        <div className="switch overlay-toggle" aria-label="영상 표시 방식">
+          <button type="button" aria-pressed={!overlay} onClick={() => setOverlay(false)}>원본</button>
+          <button type="button" aria-pressed={overlay} onClick={() => setOverlay(true)}>AI 분석</button>
+        </div>
+        {rename && <button type="button" aria-label={source.name + " 이름 수정"} aria-haspopup="dialog"
+          onClick={() => { setNameError(""); setEditing(true); }}>이름 수정</button>}
+        {remove && <button className="tile-remove" type="button" aria-label={source.name + " 제거"}
+          title="영상 소스 제거" disabled={pending} onClick={remove}>×</button>}
       </div>
-      {remove && <button className="tile-remove" type="button" aria-label={source.name + " 제거"}
-        title="영상 소스 제거" disabled={pending} onClick={remove}>×</button>}
     </div>
+    {rename && <dialog ref={renameDialog} className="panel source-rename-dialog"
+      aria-labelledby={"source-rename-title-" + source.id} onClose={() => setEditing(false)}
+      onCancel={(event) => { if (savingName) event.preventDefault(); }}>
+      <h2 id={"source-rename-title-" + source.id}>영상 소스 이름 수정</h2>
+      {editing && <form onSubmit={saveName}>
+        <label htmlFor={"source-rename-" + source.id}>새 표시 이름</label>
+        <input id={"source-rename-" + source.id} name="name" defaultValue={source.name} maxLength={120} required autoFocus />
+        {nameError && <p className="form-error" role="alert">{nameError}</p>}
+        <div className="delete-actions">
+          <button type="button" disabled={savingName} onClick={() => renameDialog.current?.close()}>취소</button>
+          <button className="primary" type="submit" disabled={savingName}>저장</button>
+        </div>
+      </form>}
+    </dialog>}
     {workerPreview && (live || overlay)
       ? <AnalysisFrame snapshot={snapshot} display={visibleDisplay} /> :
       source.source_type === "webcam" ? source.stream ? <WebcamVideo stream={source.stream} /> :
         <div className="tile-screen">브라우저에서 웹캠을 다시 연결하세요.</div> :
       source.source_type === "rtsp" ? !hidden && (overlay
         ? <div className="tile-screen" role="status">{
-          snapshot?.phase === "reconnecting" ? "RTSP 영상에 연결 중…" : "실시간 분석 영상을 준비 중…"
+          snapshot?.phase === "reconnecting" ? "RTSP 영상에 다시 연결 중…" :
+          source.status === "queued" ? (source.worker_connected ? "분석 대기 중…" : "분석 워커 연결 대기 중…") :
+          source.status === "failed" ? "AI 분석을 시작하지 못했습니다. 연결 설정을 확인하고 다시 분석하세요." :
+          source.status === "stopped" || source.status === "idle" ? "AI 분석이 중지됐습니다. 모델 설정에서 다시 분석할 수 있습니다." :
+          "실시간 분석 영상을 준비 중…"
         }</div>
         : <RtspPreview source={source} />) :
       !hidden && <FileAnalysis source={source} display={visibleDisplay} enabled={overlay} onError={onVideoError} />}
@@ -174,6 +216,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
   const [layout, setLayout] = useState("grid");
   const [sourceMode, setSourceMode] = useState("rtsp");
   const [rtspMode, setRtspMode] = useState("registered");
+  const [addFeedback, setAddFeedback] = useState(null);
   const [settings, setSettings] = useState(initialSettings);
   const [attachedBehavior, setAttachedBehavior] = useState(null);
   const defaultChosen = useRef(false);
@@ -315,6 +358,7 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
     const { name, sample, video, url, device, ip, port, path, camera_username, camera_password } =
       Object.fromEntries(new FormData(form));
     setPending(true);
+    setAddFeedback(null);
     try {
       if (sourceMode === "webcam") {
         await addWebcam(device);
@@ -325,12 +369,16 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
             throw new Error("카메라 계정 입력에는 로컬 접속 또는 HTTPS가 필요합니다.");
           }
           source = await api("/cameras/rtsp/direct", {
-            name, ip: ip.trim(), port: Number(port), path: path.trim(),
+            name: name.trim() || "IP 카메라 " + ip.trim(),
+            ip: ip.trim(), port: Number(port), path: path.trim(),
             camera_username: camera_username.trim() || null, camera_password: camera_password || null,
             settings: newSourceSettings,
           });
         } else if (sourceMode === "rtsp") {
-          source = await api("/cameras/rtsp", { name, url: url.trim(), settings: newSourceSettings });
+          const address = url.trim();
+          const host = address.startsWith("rtsp://") ? new URL(address).hostname : address;
+          source = await api("/cameras/rtsp", { name: name.trim() || "IP 카메라 " + host,
+            url: address, settings: newSourceSettings });
         } else if (sourceMode === "upload") {
           source = await api("/cameras/upload?" + new URLSearchParams({ name, filename: video.name, ...newSourceSettings }), video);
         } else {
@@ -339,9 +387,15 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
         form.reset();
         await refresh();
         select(source.id);
+        setAddFeedback({ message: "등록했습니다. 분석 대기열에서 시작됩니다.", error: false });
         notify("영상 소스를 등록하고 분석을 요청했습니다.");
       }
-    } catch (error) { if (mounted.current) onError(error); }
+    } catch (error) {
+      if (mounted.current) {
+        setAddFeedback({ message: error.message, error: true });
+        if (error.status === 401) onError(error);
+      }
+    }
     finally { if (mounted.current) setPending(false); }
   }
   async function analyze(event) {
@@ -387,6 +441,11 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
           style={cascade ? { "--step": index % 5, "--stack": Math.floor(index / 5) + 1, "--layer": source.id === chosen?.id ? 6 : index % 5 + 1 } : undefined}
           hidden={layout === "focus" && source.id !== chosen?.id}
           onSelect={() => select(source.id)} remove={canWrite ? () => removeSource(source.id) : null}
+          rename={canWrite ? async (name) => {
+            await api("/cameras/" + source.id, { name }, "PATCH");
+            await refresh();
+            notify("영상 소스 이름을 변경했습니다.");
+          } : null}
           snapshot={snapshots[source.id]} display={display} pending={pending}
           onVideoError={() => notify("영상을 열 수 없습니다. 접속 상태를 확인하세요.")} />)}
         {!all.length && <div className="empty">등록된 영상 소스가 없습니다.</div>}
@@ -450,10 +509,14 @@ function Monitor({ sources, models, selection, select, api, canWrite, refresh, r
               <p className="muted">브라우저의 카메라 권한을 허용하세요.</p>
             </> : <>
               <label htmlFor="source-name">표시 이름</label>
-              <input id="source-name" name="name" maxLength={120} placeholder="예: 매장 입구" required />
+              <input id="source-name" name="name" maxLength={120}
+                placeholder={sourceMode === "rtsp" ? "비우면 IP로 이름 지정" : "예: 매장 입구"}
+                required={sourceMode !== "rtsp"} />
             </>}
             <button className="primary" disabled={pending}>{pending ? "처리 중…" :
               sourceMode === "webcam" ? "웹캠 연결" : sourceMode === "rtsp" ? "CCTV 연결" : "영상 등록 및 테스트"}</button>
+            {addFeedback && <p className={addFeedback.error ? "form-error" : "muted"}
+              role={addFeedback.error ? "alert" : "status"}>{addFeedback.message}</p>}
           </form>
         </section>
         <AnalysisSettings {...{ settings, setSettings, models, chosen, pending, attachedBehavior }} apply={analyze}
@@ -476,7 +539,10 @@ function Records({ sources, api, revision, canWrite, onError, notify, refresh, o
   const [decision, setDecision] = useState("needs_review");
   const [saving, setSaving] = useState(false);
   const [seek, setSeek] = useState(0);
-  const [deleting, setDeleting] = useState(null);
+  const [selecting, setSelecting] = useState(false);
+  const [checked, setChecked] = useState(new Set());
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
   const generation = useRef(0);
   const event = events.find((entry) => entry.id === selected);
 
@@ -525,43 +591,74 @@ function Records({ sources, api, revision, canWrite, onError, notify, refresh, o
     finally { setSaving(false); }
   }
 
-  async function deleteEvent() {
+  function toggleEvent(id) {
+    setChecked((previous) => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < 100) next.add(id);
+      return next;
+    });
+  }
+
+  async function deleteEvents() {
+    setDeleteError("");
     setSaving(true);
     try {
-      await api("/events/" + deleting.id, undefined, "DELETE");
+      await api("/events/delete", { event_ids: [...checked] }, "POST");
       generation.current += 1;
       setLoading(false);
-      setEvents((rows) => rows.filter((row) => row.id !== deleting.id));
-      setSelected(null);
-      setDeleting(null);
-      notify("사건을 삭제했습니다. 원본 영상 용량은 저장 공간에서 정리할 수 있습니다.");
+      setEvents((rows) => rows.filter((row) => !checked.has(row.id)));
+      setSelected((id) => checked.has(id) ? null : id);
+      setChecked(new Set());
+      setSelecting(false);
+      setDeleting(false);
+      notify(`선택한 사건 ${checked.size}건을 삭제했습니다.`);
       await refresh();
-    } catch (error) { onError(error); }
+    } catch (error) {
+      setDeleteError(error.message);
+      if (error.status === 401) onError(error);
+    }
     finally { setSaving(false); }
   }
 
   return <div className="workspace records">
     <section className="panel timeline" aria-label="감지된 사건">
       <div className="section-heading"><h2>감지된 사건</h2>
-        <button disabled={loading} onClick={() => load()}>새로고침</button>
+        <div className="switch">
+          <button disabled={loading || saving} onClick={() => load()}>새로고침</button>
+          {canWrite && <button type="button" onClick={() => {
+            setSelecting((value) => !value);
+            setChecked(new Set());
+          }}>{selecting ? "선택 취소" : "삭제"}</button>}
+          {selecting && <button className="danger" disabled={!checked.size || saving}
+            onClick={() => { setDeleteError(""); setDeleting(true); }}>선택 삭제 ({checked.size})</button>}
+        </div>
       </div>
       <div className="filters">
-        <label>영상 소스<select value={camera} onChange={(e) => { setCamera(e.target.value); setSelected(null); }}>
+        <label>영상 소스<select value={camera} onChange={(e) => { setCamera(e.target.value); setSelected(null); setChecked(new Set()); }}>
           <option value="">전체 소스</option>{sources.map((source) => <option key={source.id} value={source.id}>{source.name}</option>)}
         </select></label>
-        <label>판정 방식<select value={method} onChange={(e) => { setMethod(e.target.value); setSelected(null); }}>
+        <label>판정 방식<select value={method} onChange={(e) => { setMethod(e.target.value); setSelected(null); setChecked(new Set()); }}>
           <option value="">전체 방식</option>{Object.entries(methods).map(([key, name]) => <option key={key} value={key}>{name}</option>)}
         </select></label>
       </div>
       <div aria-busy={loading}>
-        {events.map((entry) => <button className="event" key={entry.id} aria-current={entry.id === selected} onClick={() => choose(entry)}>
-          <strong>{types[entry.event_type] || entry.event_type}</strong>
-          <small>{entry.camera_name} · {position(entry.source_time_ms)} · {methods[entry.detection_method]}</small>
-          {entry.kakao_status && <small>카카오톡 · {({
-            queued: "대기", delivering: "발송 중", retry_wait: "재시도 대기",
-            sent: "발송 완료", failed: "발송 실패", cancelled: "발송 취소",
-          })[entry.kakao_status]}</small>}
-        </button>)}
+        {events.map((entry) => {
+          const content = <>
+            <strong>{types[entry.event_type] || entry.event_type}</strong>
+            <small>{entry.camera_name} · {position(entry.source_time_ms)} · {methods[entry.detection_method]}</small>
+            {entry.kakao_status && <small>카카오톡 · {({
+              queued: "대기", delivering: "발송 중", retry_wait: "재시도 대기",
+              sent: "발송 완료", failed: "발송 실패", cancelled: "발송 취소",
+            })[entry.kakao_status]}</small>}
+          </>;
+          return selecting ? <label className="event event-select" key={entry.id}>
+            <input type="checkbox" checked={checked.has(entry.id)} onChange={() => toggleEvent(entry.id)}
+              disabled={saving || (checked.size >= 100 && !checked.has(entry.id))} />
+            <span>{content}</span>
+          </label> : <button className="event" key={entry.id} aria-current={entry.id === selected}
+            onClick={() => choose(entry)}>{content}</button>;
+        })}
         {!events.length && <p className="empty">{loading ? "사건을 불러오는 중…" : "조건에 맞는 사건이 없습니다."}</p>}
       </div>
       {more && <button disabled={loading} onClick={() => load(events.at(-1))}>이전 사건 더 보기</button>}
@@ -591,15 +688,14 @@ function Records({ sources, api, revision, canWrite, onError, notify, refresh, o
           <button disabled={saving}>저장</button>
         </form>}
         {canWrite && <div className="record-actions">
-          <button className="danger" disabled={saving} onClick={() => setDeleting(event)}>이 사건 삭제</button>
           <button onClick={openStorage}>영상 용량 정리</button>
         </div>}
       </> : <p className="muted">목록에서 사건을 선택하세요.</p>}
     </section>
-    {deleting && <DeleteDialog title="이 사건을 삭제할까요?" busy={saving} onCancel={() => setDeleting(null)} onConfirm={deleteEvent}>
-      <p>{deleting.camera_name} · {position(deleting.source_time_ms)} · {types[deleting.event_type] || deleting.event_type}</p>
-      <p>선택한 사건을 목록에서 삭제합니다. 같은 영상을 사용하는 다른 사건과 원본 영상은 유지됩니다.</p>
-      <p className="muted">영상 파일까지 지워 용량을 비우려면 저장 공간에서 영상·기록 삭제를 사용하세요.</p>
+    {deleting && <DeleteDialog title="선택한 사건을 정말 삭제하시겠습니까?" busy={saving}
+      onCancel={() => setDeleting(false)} onConfirm={deleteEvents}>
+      <p>선택한 사건 {checked.size}건과 해당 사건의 전용 영상 클립이 삭제됩니다. 업로드 원본은 유지됩니다.</p>
+      {deleteError && <p className="form-error" role="alert">{deleteError}</p>}
     </DeleteDialog>}
   </div>;
 }
@@ -612,6 +708,7 @@ function Dashboard({ user, logout }) {
   const [revision, setRevision] = useState(0);
   const [notice, setNotice] = useState("");
   const [kakao, setKakao] = useState(null);
+  const [kakaoStatusFailed, setKakaoStatusFailed] = useState(false);
   const [kakaoPending, setKakaoPending] = useState(false);
   const generation = useRef(0);
   const api = request;
@@ -636,9 +733,17 @@ function Dashboard({ user, logout }) {
   }, [refresh, api, onError]);
 
   const canWrite = user.role === "owner";
+  const refreshKakao = useCallback(() => {
+    setKakaoStatusFailed(false);
+    return api("/kakao/status").then(setKakao).catch((error) => {
+      setKakao(null);
+      setKakaoStatusFailed(true);
+      onError(error);
+    });
+  }, [api, onError]);
   useEffect(() => {
     if (!canWrite) return;
-    api("/kakao/status").then(setKakao).catch(onError);
+    refreshKakao();
     const url = new URL(window.location.href);
     const result = url.searchParams.get("kakao");
     if (!result) return;
@@ -653,7 +758,7 @@ function Dashboard({ user, logout }) {
     if (messages[result]) setNotice(messages[result]);
     url.searchParams.delete("kakao");
     window.history.replaceState(null, "", url);
-  }, [api, canWrite, onError]);
+  }, [canWrite, refreshKakao]);
 
   async function connectKakao() {
     setKakaoPending(true);
@@ -666,6 +771,19 @@ function Dashboard({ user, logout }) {
     }
   }
 
+  async function disconnectKakao() {
+    setKakaoPending(true);
+    try {
+      await api("/kakao/logout", undefined, "POST");
+      setKakao((current) => current && { ...current, connected: false, nickname: null });
+      setNotice("카카오톡에서 로그아웃했습니다. 관제실은 계속 사용할 수 있습니다.");
+    } catch (error) {
+      onError(error);
+    } finally {
+      setKakaoPending(false);
+    }
+  }
+
   return <>
     <header className="topbar">
       <span className="brand"><span className="brand-mark" aria-hidden="true">◉</span> 매장 영상 관제</span>
@@ -673,12 +791,27 @@ function Dashboard({ user, logout }) {
         <button className="tab" aria-pressed={tab === "monitor"} onClick={() => setTab("monitor")}>영상 관제</button>
         <button className="tab" aria-pressed={tab === "records"} onClick={() => setTab("records")}>사건 기록</button>
         <button className="tab" aria-pressed={tab === "storage"} onClick={() => setTab("storage")}>저장 공간</button>
-        {canWrite && <button className="tab kakao-login" onClick={connectKakao} disabled={kakaoPending}
-          title={kakao?.connected ? "알림을 받을 카카오 계정을 다시 연결" : "나와의 채팅으로 이상행동 알림 받기"}>
-          {kakao?.connected ? "카카오 연결됨 · 변경" : "카카오 로그인"}
-        </button>}
       </nav>
-      <div id="account"><span id="user-name">{user.display_name}</span>
+      <div id="account">
+        {canWrite && <div className="kakao-control">
+          <div className="kakao-connection" role="status">
+            <strong className={kakao?.connected ? "connected" : ""}>
+              {kakao?.connected ? "카카오톡 로그인됨" : kakaoStatusFailed ? "카카오톡 로그인 확인 실패" :
+                kakao ? "카카오톡 로그아웃 상태" : "카카오톡 로그인 확인 중"}
+            </strong>
+            {kakao?.connected && <span className="kakao-nickname" title={kakao.nickname || undefined}>
+              {kakao.nickname || "닉네임 동의 필요"}
+            </span>}
+            {kakao?.connected && !kakao.delivery_configured &&
+              <span className="kakao-delivery-setup">알림 발송 주소 미설정</span>}
+          </div>
+          {kakao?.connected ? (
+            <button className="quiet" onClick={disconnectKakao} disabled={kakaoPending}>카카오톡 로그아웃</button>
+          ) : kakao?.allowed && kakao.configured && (
+            <button className="quiet" onClick={connectKakao} disabled={kakaoPending}>카카오톡 로그인</button>
+          )}
+        </div>}
+        <span id="user-name">{user.display_name}</span>
         <button className="quiet" onClick={() => api("/auth/logout", undefined, "POST").then(() => logout()).catch(onError)}>로그아웃</button>
       </div>
     </header>
@@ -688,6 +821,7 @@ function Dashboard({ user, logout }) {
         <button onClick={() => {
           setNotice("");
           refresh().catch(onError);
+          if (canWrite) refreshKakao();
           setRevision((old) => old + 1);
         }}>새로고침</button>
       </div>
